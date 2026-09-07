@@ -3,7 +3,7 @@
 
 PROJECT := backend
 
-.PHONY: help install run clean
+.PHONY: help install run frontend-install frontend-dev frontend-build frontend-lint frontend-test frontend-typecheck clean
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -14,6 +14,24 @@ install: ## Create the venv and install dependencies (from uv.lock)
 
 run: ## Run the voice agent (then open http://localhost:7860/client)
 	uv run --directory $(PROJECT) python bot.py
+
+frontend-install: ## Install frontend dependencies with pnpm
+	pnpm --dir frontend install
+
+frontend-dev: ## Run the frontend development server
+	pnpm --dir frontend dev
+
+frontend-build: ## Build the frontend for production
+	pnpm --dir frontend build
+
+frontend-lint: ## Lint frontend source files
+	pnpm --dir frontend lint
+
+frontend-test: ## Run frontend tests
+	pnpm --dir frontend test
+
+frontend-typecheck: ## Type-check frontend source files
+	pnpm --dir frontend typecheck
 
 clean: ## Remove the venv and Python caches
 	rm -rf $(PROJECT)/.venv

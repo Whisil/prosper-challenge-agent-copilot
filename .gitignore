@@ -21,6 +21,7 @@ env/
 
 # ---- Node / frontend (Phase 1 UI later) ----
 node_modules/
+.pnpm-store/
 .next/
 dist/
 *.log
@@ -31,3 +32,9 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+
+docs
+!docs/
+docs/*
+!docs/development.md
+!docs/frontend-architecture.md
