@@ -1,6 +1,6 @@
 # Development guide
 
-This repository contains a Python voice-agent backend and a pnpm-managed React frontend. The frontend is currently a read-only graph workspace backed by a local fixture; the backend provides the runnable Pipecat voice agent and browser test-call client.
+This repository contains a Python voice-agent backend and a pnpm-managed React frontend. The frontend is a local editable graph workspace backed by a draft fixture; the backend provides the runnable Pipecat voice agent and browser test-call client.
 
 ## Prerequisites
 
@@ -64,11 +64,20 @@ The frontend's **Test call** button opens `VITE_VOICE_CLIENT_URL` in a new tab. 
 
 ## Working with the project
 
-Frontend code lives in `frontend/src`. Product behavior is organized under `frontend/src/features`; reusable UI primitives live under `frontend/src/components/ui`. The graph fixture and backend-shaped types are in `frontend/src/features/agent-graph`.
+Frontend code lives in `frontend/src`. Product behavior is organized under `frontend/src/features`; reusable UI primitives live under `frontend/src/components/ui`. The graph fixture, backend-shaped types, editor actions, and validation are in `frontend/src/features/agent-graph`.
+
+In the agent workspace:
+
+- Use the graph toolbar to add a node and drag nodes to arrange the conversation.
+- Select a node to edit its name, instructions, terminal state, and transitions.
+- Use the transition controls to change targets, descriptions, required fields, or remove transitions.
+- Use **Use as initial node** to change the conversation entry point.
+- Draft changes are held in local React state and are not persisted or sent to the backend yet.
+- The Test call button still opens the Pipecat browser client running the backend's static `backend/example_flow.json` flow.
 
 Backend code lives in `backend`. `backend/agent_builder/schema.py` defines the declarative agent contract, `backend/agent_builder/builder.py` compiles it, and `backend/bot.py` runs the voice pipeline.
 
-The initial frontend does not persist edits or call a frontend API. Update the temporary fixture in `frontend/src/features/agent-graph/data/exampleAgent.ts` when prototyping UI states. Future persistence should be introduced through a typed API adapter rather than direct component access to backend files.
+The editor applies serializable actions to a local `AgentDraft`, which keeps the future Copilot integration on the same mutation path. Update the temporary fixture in `frontend/src/features/agent-graph/data/exampleAgent.ts` when prototyping initial UI states. Future persistence and test-call sessions should be introduced through typed API adapters rather than direct component access to backend files.
 
 ## Validation
 
