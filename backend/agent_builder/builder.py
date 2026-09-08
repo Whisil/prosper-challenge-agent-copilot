@@ -39,6 +39,11 @@ class AgentBuilder:
 
     # ---- validation --------------------------------------------------------
     def _validate(self) -> None:
+        if len(self._nodes_by_name) != len(self.config.nodes):
+            raise ValueError("Agent node IDs must be unique.")
+        node_ids = [node.id or node.name for node in self.config.nodes]
+        if len(set(node_ids)) != len(node_ids):
+            raise ValueError("Agent stable node IDs must be unique.")
         names = set(self._nodes_by_name)
         if not names:
             raise ValueError("Agent has no nodes.")
@@ -46,8 +51,34 @@ class AgentBuilder:
             raise ValueError(
                 f"initial_node '{self.config.initial_node}' is not a defined node."
             )
+        all_edge_ids: set[str] = set()
         for node in self.config.nodes:
+            node_type = node.type or ("end" if node.end else "conversation")
+            if node_type not in {"conversation", "tool", "branch", "transfer", "end"}:
+                raise ValueError(f"Node '{node.name}' has unsupported type '{node_type}'.")
+            if node_type == "end" and node.edges:
+                raise ValueError(f"End node '{node.name}' cannot have outgoing edges.")
+            if node_type == "tool" and not node.tool:
+                raise ValueError(f"Tool node '{node.name}' needs a tool definition.")
+            if node_type == "tool" and "confirmationRequired" not in node.tool:
+                raise ValueError(f"Tool node '{node.name}' needs confirmation metadata.")
+            if node_type == "branch" and not (node.branch or {}).get("expression"):
+                raise ValueError(f"Branch node '{node.name}' needs an expression.")
+            if node_type == "transfer" and not (node.transfer or {}).get("reason"):
+                raise ValueError(f"Transfer node '{node.name}' needs a handoff reason.")
+            edge_functions = set()
+            edge_ids = set()
             for edge in node.edges:
+                if edge.id:
+                    if edge.id in edge_ids or edge.id in all_edge_ids:
+                        raise ValueError(f"Duplicate edge ID '{edge.id}' in node '{node.name}'.")
+                    edge_ids.add(edge.id)
+                    all_edge_ids.add(edge.id)
+                if edge.kind and edge.kind not in {"condition", "default", "success", "failure"}:
+                    raise ValueError(f"Edge '{edge.function}' in node '{node.name}' has an unsupported kind.")
+                if edge.function in edge_functions:
+                    raise ValueError(f"Duplicate edge function '{edge.function}' in node '{node.name}'.")
+                edge_functions.add(edge.function)
                 if edge.target not in names:
                     raise ValueError(
                         f"Edge '{edge.function}' in node '{node.name}' targets "
@@ -80,6 +111,12 @@ class AgentBuilder:
             # Persist what the caller gave us so later nodes can use it.
             flow_manager.state.update(args)
             logger.info(f"[{edge.function}] -> {edge.target} | collected: {args}")
+            try:
+                from control_api import record_runtime_event
+
+                record_runtime_event("transition", f"Transitioned via {edge.function}.", edge_id=edge.id, target=edge.target)
+            except ImportError:
+                pass
             next_node = self._make_node(self._nodes_by_name[edge.target])
             return {"status": "success", **args}, next_node
 

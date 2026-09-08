@@ -35,6 +35,7 @@ from pipecat.workers.runner import WorkerRunner
 from pipecat_flows import FlowManager
 
 from agent_builder import AgentBuilder
+from control_api import active_flow_path, mark_runtime_completed, mark_runtime_connected, start_control_server
 
 # Load .env next to this file, so the bot runs the same from the repo root or backend/.
 load_dotenv(Path(__file__).parent / ".env", override=True)
@@ -96,12 +97,15 @@ async def run_bot(
 
     @transport.event_handler("on_client_connected")
     async def on_client_connected(transport, client):
-        logger.info("Client connected — starting flow at initial node")
-        await flow_manager.initialize(builder.build_initial_node())
+        active_builder = AgentBuilder.from_json(active_flow_path(AGENT_FLOW))
+        logger.info(f"Client connected — starting '{active_builder.config.name}' at initial node")
+        await flow_manager.initialize(active_builder.build_initial_node())
+        mark_runtime_connected(active_builder.config.initial_node)
 
     @transport.event_handler("on_client_disconnected")
     async def on_client_disconnected(transport, client):
         logger.info("Client disconnected")
+        mark_runtime_completed()
         await worker.cancel()
 
     runner = WorkerRunner(handle_sigint=runner_args.handle_sigint)
@@ -112,7 +116,8 @@ async def run_bot(
 async def bot(runner_args: RunnerArguments):
     """Entry point invoked by the Pipecat dev runner (and Pipecat Cloud)."""
     transport = await create_transport(runner_args, transport_params)
-    builder = AgentBuilder.from_json(AGENT_FLOW)
+    start_control_server()
+    builder = AgentBuilder.from_json(active_flow_path(AGENT_FLOW))
     await run_bot(transport, runner_args, builder)
 
 
