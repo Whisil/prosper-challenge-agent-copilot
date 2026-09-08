@@ -12,10 +12,30 @@ export function useAgentGraph() {
   )
   const apply = useCallback((action: AgentEditorAction) => dispatch(action), [])
   const updateNode = useCallback((nodeName: string, patch: Partial<AgentNode>) => apply({ type: "update_node", nodeName, patch }), [apply])
-  const addNode = useCallback((node: AgentNode, position: { x: number; y: number }) => {
+  const addNode = useCallback(() => {
+    const nodeNames = new Set(draft.config.nodes.map((node) => node.name))
+    let index = draft.config.nodes.length + 1
+    let nodeName = `new_step_${index}`
+    while (nodeNames.has(nodeName)) {
+      index += 1
+      nodeName = `new_step_${index}`
+    }
+    const node: AgentNode = {
+      name: nodeName,
+      task_messages: [{ role: "developer", content: "" }],
+      edges: [],
+      end: false,
+    }
+    const position = { x: 230, y: draft.config.nodes.length * 195 }
     apply({ type: "add_node", node, position })
     setSelectedNodeName(node.name)
-  }, [apply])
+  }, [apply, draft.config.nodes])
+  const updateNodeAndSelection = useCallback((nodeName: string, patch: Partial<AgentNode>) => {
+    updateNode(nodeName, patch)
+    if (patch.name && patch.name !== nodeName && patch.name.trim() && !draft.config.nodes.some((node) => node.name === patch.name)) {
+      setSelectedNodeName(patch.name)
+    }
+  }, [draft.config.nodes, updateNode])
   const deleteNode = useCallback((nodeName: string) => {
     apply({ type: "delete_node", nodeName })
     if (nodeName === selectedNodeName) setSelectedNodeName(draft.config.initial_node)
@@ -36,7 +56,7 @@ export function useAgentGraph() {
     selectedNode,
     selectedNodeName,
     selectNode: setSelectedNodeName,
-    updateNode,
+    updateNode: updateNodeAndSelection,
     addNode,
     deleteNode,
     addEdge,

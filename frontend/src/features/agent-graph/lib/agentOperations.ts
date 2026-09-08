@@ -64,7 +64,8 @@ export function applyAgentAction(draft: AgentDraft, action: AgentEditorAction): 
       if (action.patch.name && action.patch.name !== action.nodeName) {
         const renamed = renameNode(draft, action.nodeName, action.patch.name)
         if (renamed === draft) return draft
-        const { name: _name, ...remainingPatch } = action.patch
+        const remainingPatch = { ...action.patch }
+        delete remainingPatch.name
         return applyAgentAction(renamed, { type: "update_node", nodeName: action.patch.name, patch: remainingPatch })
       }
       return {
