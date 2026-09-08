@@ -38,6 +38,7 @@ Documentation must be updated automatically in the same logical change whenever 
 
 ## Commit rules
 
+- Do not stage or commit changes automatically. Leave implementation changes in the worktree and report their status unless the user explicitly requests staging or commits.
 - Split work into small, logical, sequential commits that can be reviewed or reverted independently.
 - Keep each commit focused on one purpose; do not mix dependency setup, product behavior, tests, and unrelated cleanup.
 - Use concise lowercase subjects in the form `<verb> <purpose>`, for example `add frontend dependencies`, `implement agent graph`, or `document local development`.

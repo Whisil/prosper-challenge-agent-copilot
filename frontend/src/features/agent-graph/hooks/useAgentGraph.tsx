@@ -46,6 +46,22 @@ export function useAgentGraph() {
   const addEdge = useCallback((source: string, edge: AgentEdge) => apply({ type: "add_edge", source, edge }), [apply])
   const updateEdge = useCallback((source: string, functionName: string, patch: Partial<AgentEdge>) => apply({ type: "update_edge", source, functionName, patch }), [apply])
   const deleteEdge = useCallback((source: string, functionName: string) => apply({ type: "delete_edge", source, functionName }), [apply])
+  const connectTransition = useCallback((source: string, target: string, sourceHandle?: string | null) => {
+    const sourceNode = draft.config.nodes.find((node) => node.name === source)
+    const targetNode = draft.config.nodes.find((node) => node.name === target)
+    if (!sourceNode || !targetNode) return
+    if (sourceHandle?.startsWith("transition:")) {
+      updateEdge(source, sourceHandle.slice("transition:".length), { target })
+      return
+    }
+    let index = sourceNode.edges.length + 1
+    let functionName = `new_transition_${index}`
+    while (sourceNode.edges.some((edge) => edge.function === functionName)) {
+      index += 1
+      functionName = `new_transition_${index}`
+    }
+    addEdge(source, { function: functionName, description: "", target, properties: {}, required: [] })
+  }, [addEdge, draft.config.nodes, updateEdge])
   const moveNode = useCallback((nodeName: string, position: { x: number; y: number }) => apply({ type: "move_node", nodeName, position }), [apply])
   const setInitialNode = useCallback((nodeName: string) => apply({ type: "set_initial_node", nodeName }), [apply])
   const resetDraft = useCallback(() => {
@@ -65,6 +81,7 @@ export function useAgentGraph() {
     addEdge,
     updateEdge,
     deleteEdge,
+    connectTransition,
     moveNode,
     setInitialNode,
     resetDraft,

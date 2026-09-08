@@ -7,7 +7,7 @@ import { CopilotPanel } from "@/features/agent-copilot/components/CopilotPanel"
 import { NodeInspector } from "@/features/agent-inspector/components/NodeInspector"
 
 export function AppShell() {
-  const { agent, draft, selectedNode, selectedNodeName, selectNode, addNode, moveNode, updateNode, deleteNode, addEdge, updateEdge, deleteEdge, setInitialNode, validationErrors, isDirty } = useAgentGraph()
+  const { agent, draft, selectedNode, selectedNodeName, selectNode, addNode, moveNode, updateNode, deleteNode, addEdge, updateEdge, deleteEdge, connectTransition, setInitialNode, validationErrors, isDirty } = useAgentGraph()
   const onTestCall = useCallback(() => {
     const url = import.meta.env.VITE_VOICE_CLIENT_URL || "http://localhost:7860/client"
     window.open(url, "_blank", "noopener,noreferrer")
@@ -19,8 +19,8 @@ export function AppShell() {
       <main className="flex min-w-0 flex-1 flex-col">
         <Topbar onTestCall={onTestCall} isDirty={isDirty} validationErrors={validationErrors} />
         <div className="flex min-h-0 flex-1">
-          <div className="min-w-0 flex-1"><AgentGraph config={agent} layout={draft.layout} selectedNodeName={selectedNodeName} onSelectNode={selectNode} onAddNode={addNode} onMoveNode={moveNode} /></div>
-          <div className="flex w-[300px] shrink-0 flex-col"><NodeInspector node={selectedNode} nodes={agent.nodes} initialNode={agent.initial_node} validationErrors={validationErrors} onUpdateNode={updateNode} onDeleteNode={deleteNode} onSetInitialNode={setInitialNode} onAddEdge={addEdge} onUpdateEdge={updateEdge} onDeleteEdge={deleteEdge} /><CopilotPanel /></div>
+          <div className="min-w-0 flex-1"><AgentGraph config={agent} layout={draft.layout} selectedNodeName={selectedNodeName} onSelectNode={selectNode} onAddNode={addNode} onMoveNode={moveNode} onConnectTransition={connectTransition} /></div>
+          <div className="flex w-[380px] shrink-0 flex-col"><NodeInspector node={selectedNode} nodes={agent.nodes} initialNode={agent.initial_node} validationErrors={validationErrors} onUpdateNode={updateNode} onDeleteNode={deleteNode} onSetInitialNode={setInitialNode} onAddEdge={addEdge} onUpdateEdge={updateEdge} onDeleteEdge={deleteEdge} /><CopilotPanel /></div>
         </div>
       </main>
     </div>

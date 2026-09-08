@@ -11,6 +11,15 @@ export interface AgentProperty {
   description?: string
 }
 
+export const supportedPropertyTypes = ["string", "number", "integer", "boolean"] as const
+export type AgentPropertyType = (typeof supportedPropertyTypes)[number]
+
+export const NEW_TRANSITION_HANDLE = "new-transition"
+
+export function transitionHandleId(functionName: string) {
+  return `transition:${functionName}`
+}
+
 export interface AgentEdge {
   function: string
   description: string

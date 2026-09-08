@@ -45,4 +45,30 @@ describe("validateAgentConfig", () => {
 
     expect(messages).toContain("Required field 'intent' needs a matching property.")
   })
+
+  it("validates transition descriptions and property definitions", () => {
+    const config = configWith({
+      nodes: exampleAgent.nodes.map((node) => node.name === "greeting" ? {
+        ...node,
+        edges: node.edges.map((edge) => ({
+          ...edge,
+          description: "",
+          properties: { intent: { type: "date", description: "" } },
+        })),
+      } : node),
+    })
+    const errors = validateAgentConfig(config)
+
+    expect(errors.map((error) => error.path)).toEqual(expect.arrayContaining([
+      "nodes.greeting.edges.choose_intent.description",
+      "nodes.greeting.edges.choose_intent.properties.intent.type",
+      "nodes.greeting.edges.choose_intent.properties.intent.description",
+    ]))
+  })
+
+  it("accepts complete supported property definitions", () => {
+    const errors = validateAgentConfig(exampleAgent)
+
+    expect(errors.filter((error) => error.severity === "error")).toEqual([])
+  })
 })

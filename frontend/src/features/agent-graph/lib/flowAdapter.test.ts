@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { exampleAgent } from "../data/exampleAgent"
+import { NEW_TRANSITION_HANDLE, transitionHandleId } from "../model/type"
 import { toFlowElements } from "./flowAdapter"
 
 describe("toFlowElements", () => {
@@ -14,6 +15,7 @@ describe("toFlowElements", () => {
       ["collect_details", "offer_times"],
       ["offer_times", "confirm"],
     ])
+    expect(edges[0]).toMatchObject({ sourceHandle: "transition:choose_intent", targetHandle: "target" })
   })
 
   it("keeps terminal nodes without outgoing edges", () => {
@@ -22,5 +24,13 @@ describe("toFlowElements", () => {
 
     expect(terminalNode?.data.node.end).toBe(true)
     expect(edges.some((edge) => edge.source === "confirm")).toBe(false)
+  })
+
+  it("keeps persisted layout positions and exposes stable transition handle ids", () => {
+    const { nodes } = toFlowElements(exampleAgent, { greeting: { x: 910, y: 120 } })
+
+    expect(nodes.find((node) => node.id === "greeting")?.position).toEqual({ x: 910, y: 120 })
+    expect(transitionHandleId("choose_intent")).toBe("transition:choose_intent")
+    expect(NEW_TRANSITION_HANDLE).toBe("new-transition")
   })
 })

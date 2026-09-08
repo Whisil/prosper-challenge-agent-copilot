@@ -1,5 +1,5 @@
 import type { Edge as ReactFlowEdge, XYPosition } from "@xyflow/react"
-import type { AgentConfig, FlowNode } from "../model/type"
+import { transitionHandleId, type AgentConfig, type FlowNode } from "../model/type"
 
 export const defaultLayout: Record<string, XYPosition> = {
   greeting: { x: 230, y: 40 },
@@ -27,7 +27,9 @@ export function toFlowElements(config: AgentConfig, layout: Record<string, XYPos
     node.edges.map((edge) => ({
       id: `${node.name}-${edge.function}-${edge.target}`,
       source: node.name,
+      sourceHandle: transitionHandleId(edge.function),
       target: edge.target,
+      targetHandle: "target",
       type: "smoothstep",
       label: titleForNode(edge.function),
       labelStyle: { fill: "#68736c", fontSize: 11, fontWeight: 600 },

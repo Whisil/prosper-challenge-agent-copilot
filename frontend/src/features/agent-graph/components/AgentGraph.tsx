@@ -1,10 +1,10 @@
-import { useCallback, useMemo } from "react"
-import { Background, Controls, MiniMap, ReactFlow, ReactFlowProvider, useReactFlow, type NodeMouseHandler } from "@xyflow/react"
+import { useCallback, useEffect, useMemo } from "react"
+import { Background, Controls, MiniMap, ReactFlow, ReactFlowProvider, useNodesState, useReactFlow, type Connection, type NodeMouseHandler } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
 import { AgentNode } from "./AgentNode"
 import { GraphToolbar } from "./GraphToolbar"
 import { toFlowElements } from "../lib/flowAdapter"
-import type { AgentConfig } from "../model/type"
+import { NEW_TRANSITION_HANDLE, type AgentConfig } from "../model/type"
 import type { XYPosition } from "@xyflow/react"
 
 interface AgentGraphProps {
@@ -14,13 +14,26 @@ interface AgentGraphProps {
   onSelectNode: (nodeName: string) => void
   onAddNode: () => void
   onMoveNode: (nodeName: string, position: XYPosition) => void
+  onConnectTransition: (source: string, target: string, sourceHandle?: string | null) => void
 }
 
-function GraphContent({ config, layout, selectedNodeName, onSelectNode, onAddNode, onMoveNode }: AgentGraphProps) {
+function GraphContent({ config, layout, selectedNodeName, onSelectNode, onAddNode, onMoveNode, onConnectTransition }: AgentGraphProps) {
   const { fitView } = useReactFlow()
   const { nodes, edges } = useMemo(() => toFlowElements(config, layout), [config, layout])
-  const selectedNodes = useMemo(() => nodes.map((node) => ({ ...node, selected: node.id === selectedNodeName })), [nodes, selectedNodeName])
+  const [flowNodes, setFlowNodes, onNodesChange] = useNodesState(nodes)
+  useEffect(() => setFlowNodes(nodes), [nodes, setFlowNodes])
+  const selectedNodes = useMemo(() => flowNodes.map((node) => ({ ...node, selected: node.id === selectedNodeName })), [flowNodes, selectedNodeName])
   const onNodeClick = useCallback<NodeMouseHandler>((_, node) => onSelectNode(node.id), [onSelectNode])
+  const onConnect = useCallback((connection: Connection) => {
+    if (!connection.source || !connection.target) return
+    if (connection.sourceHandle === NEW_TRANSITION_HANDLE) {
+      onConnectTransition(connection.source, connection.target, connection.sourceHandle)
+      return
+    }
+    if (connection.sourceHandle?.startsWith("transition:")) {
+      onConnectTransition(connection.source, connection.target, connection.sourceHandle)
+    }
+  }, [onConnectTransition])
 
   return (
     <div className="relative h-full w-full canvas-grid">
@@ -30,11 +43,13 @@ function GraphContent({ config, layout, selectedNodeName, onSelectNode, onAddNod
         edges={edges}
         nodeTypes={{ agentNode: AgentNode }}
         onNodeClick={onNodeClick}
+        onNodesChange={onNodesChange}
         onNodeDragStop={(_, node) => onMoveNode(node.id, node.position)}
+        onConnect={onConnect}
         fitView
         fitViewOptions={{ padding: 0.28 }}
         nodesDraggable
-        nodesConnectable={false}
+        nodesConnectable
         elementsSelectable
         proOptions={{ hideAttribution: true }}
       >

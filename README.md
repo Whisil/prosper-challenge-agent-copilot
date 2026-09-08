@@ -54,7 +54,7 @@ Remember to update `backend/.env` with API keys. See [`docs/development.md`](doc
 | `backend/bot.py` | The voice pipeline (WebRTC + ElevenLabs STT/TTS + OpenAI LLM). Loads an agent JSON via `AgentBuilder` and runs it. No graph logic lives here. |
 | `backend/agent_builder/` | All agent-building code. `schema.py` = the declarative `AgentConfig` / `Node` / `Edge` contract; `builder.py` = `AgentBuilder`, which loads + validates the JSON and compiles it into a Pipecat Flows graph. |
 | `backend/example_flow.json` | The example agent **as data** — a clinic scheduler. The artifact the Phase 2 Composer generates/edits. |
-| `frontend/` | The React agent workspace. It renders and locally edits a graph draft, validates changes, provides an inspector and Copilot placeholder, and opens the test-call action. |
+| `frontend/` | The React agent workspace. It renders and locally edits nodes and connectable transitions, validates the draft, provides an inspector and Copilot placeholder, and opens the static test-call action. |
 
 Frontend architecture and naming conventions are documented in [`docs/frontend-architecture.md`](docs/frontend-architecture.md). Repository contribution rules live in [`AGENTS.md`](AGENTS.md) and [`frontend/AGENTS.md`](frontend/AGENTS.md).
 

@@ -28,6 +28,14 @@ describe("agent operations", () => {
     expect(draft.config.initial_node).toBe("welcome")
     expect(draft.config.nodes[0].name).toBe("welcome")
     expect(draft.layout.welcome).toEqual({ x: 230, y: 40 })
+
+    const renamedTarget = applyAgentAction(draftWithExample(), {
+      type: "update_node",
+      nodeName: "collect_details",
+      patch: { name: "collect_patient_details" },
+    })
+    expect(renamedTarget.config.nodes[0].edges[0].target).toBe("collect_patient_details")
+    expect(renamedTarget.layout.collect_patient_details).toEqual({ x: 230, y: 235 })
   })
 
   it("deletes a node and removes inbound transitions", () => {
@@ -58,5 +66,16 @@ describe("agent operations", () => {
     draft = applyAgentAction(draft, { type: "move_node", nodeName: "confirm", position: { x: 500, y: 900 } })
     expect(draft.config.nodes.find((node) => node.name === "confirm")?.edges).toHaveLength(0)
     expect(draft.layout.confirm).toEqual({ x: 500, y: 900 })
+  })
+
+  it("retargets an existing transition without changing its function", () => {
+    const draft = applyAgentAction(draftWithExample(), {
+      type: "update_edge",
+      source: "greeting",
+      functionName: "choose_intent",
+      patch: { target: "confirm" },
+    })
+
+    expect(draft.config.nodes[0].edges[0]).toMatchObject({ function: "choose_intent", target: "confirm" })
   })
 })
