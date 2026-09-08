@@ -1,7 +1,7 @@
-import type { Edge as ReactFlowEdge } from "@xyflow/react"
+import type { Edge as ReactFlowEdge, XYPosition } from "@xyflow/react"
 import type { AgentConfig, FlowNode } from "../model/type"
 
-const positions: Record<string, { x: number; y: number }> = {
+export const defaultLayout: Record<string, XYPosition> = {
   greeting: { x: 230, y: 40 },
   collect_details: { x: 230, y: 235 },
   offer_times: { x: 230, y: 430 },
@@ -15,11 +15,11 @@ function titleForNode(name: string) {
     .join(" ")
 }
 
-export function toFlowElements(config: AgentConfig): { nodes: FlowNode[]; edges: ReactFlowEdge[] } {
+export function toFlowElements(config: AgentConfig, layout: Record<string, XYPosition> = defaultLayout): { nodes: FlowNode[]; edges: ReactFlowEdge[] } {
   const nodes: FlowNode[] = config.nodes.map((node, index) => ({
     id: node.name,
     type: "agentNode",
-    position: positions[node.name] ?? { x: 230, y: index * 195 },
+    position: layout[node.name] ?? { x: 230, y: index * 195 },
     data: { node, isInitial: node.name === config.initial_node },
   }))
 
