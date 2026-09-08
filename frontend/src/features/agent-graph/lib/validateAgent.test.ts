@@ -16,8 +16,8 @@ describe("validateAgentConfig", () => {
     const config = configWith({ initial_node: "missing", nodes: exampleAgent.nodes.map((node) => ({ ...node, edges: node.edges.map((edge) => edge.target === "collect_details" ? { ...edge, target: "missing_target" } : edge) })) })
     const messages = validateAgentConfig(config).map((error) => error.message)
 
-    expect(messages).toContain("Initial node 'missing' does not exist.")
-    expect(messages).toContain("Target node 'missing_target' does not exist.")
+    expect(messages).toContain("Initial node 'Missing' does not exist.")
+    expect(messages).toContain("Target node 'Missing Target' does not exist.")
   })
 
   it("detects duplicate names and empty instructions", () => {
@@ -30,7 +30,7 @@ describe("validateAgentConfig", () => {
     })
     const messages = validateAgentConfig(config).map((error) => error.message)
 
-    expect(messages).toContain("Node name 'same' is duplicated.")
+    expect(messages).toContain("Node name 'Same' is duplicated.")
     expect(messages).toContain("Add an instruction for this node.")
   })
 
@@ -43,7 +43,7 @@ describe("validateAgentConfig", () => {
     })
     const messages = validateAgentConfig(config).map((error) => error.message)
 
-    expect(messages).toContain("Required field 'intent' needs a matching property.")
+    expect(messages).toContain("Required field 'Intent' needs a matching property.")
   })
 
   it("validates transition descriptions and property definitions", () => {
@@ -70,5 +70,57 @@ describe("validateAgentConfig", () => {
     const errors = validateAgentConfig(exampleAgent)
 
     expect(errors.filter((error) => error.severity === "error")).toEqual([])
+  })
+
+  it("accepts existing backend property types for compatibility", () => {
+    const config = configWith({
+      nodes: exampleAgent.nodes.map((node) => node.name === "greeting" ? {
+        ...node,
+        edges: node.edges.map((edge) => ({
+          ...edge,
+          properties: {
+            count: { type: "number", description: "A numeric count." },
+            whole: { type: "integer", description: "A whole number." },
+            confirmed: { type: "boolean", description: "Whether it is confirmed." },
+          },
+          required: ["count", "whole", "confirmed"],
+        })),
+      } : node),
+    })
+
+    expect(validateAgentConfig(config).filter((error) => error.severity === "error")).toEqual([])
+  })
+
+  it("includes structured locations for node, transition, and property errors", () => {
+    const config = configWith({
+      nodes: exampleAgent.nodes.map((node) => node.name === "greeting" ? {
+        ...node,
+        task_messages: [{ role: "developer", content: "" }],
+        edges: node.edges.map((edge) => ({
+          ...edge,
+          description: "",
+          properties: { intent: { type: "unsupported", description: "" } },
+        })),
+      } : node),
+    })
+    const errors = validateAgentConfig(config)
+
+    expect(errors.find((error) => error.path.endsWith("task_messages"))?.location).toEqual({ nodeName: "greeting", field: "task_messages" })
+    expect(errors.find((error) => error.path.endsWith("description") && error.location?.edgeFunction)?.location).toEqual({ nodeName: "greeting", edgeFunction: "choose_intent", field: "description" })
+    expect(errors.find((error) => error.path.endsWith(".type"))?.location).toEqual({ nodeName: "greeting", edgeFunction: "choose_intent", propertyName: "intent", field: "type" })
+  })
+
+  it("detects duplicate stable IDs and cycles without an exit", () => {
+    const config = configWith({
+      nodes: [
+        { ...exampleAgent.nodes[0], id: "same", name: "first", edges: [{ ...exampleAgent.nodes[0].edges[0], target: "second" }] },
+        { ...exampleAgent.nodes[1], id: "same", name: "second", edges: [{ ...exampleAgent.nodes[1].edges[0], target: "first" }] },
+      ],
+      initial_node: "first",
+    })
+    const errors = validateAgentConfig(config)
+
+    expect(errors.some((error) => error.path.endsWith(".id"))).toBe(true)
+    expect(errors.some((error) => error.message.includes("cycle"))).toBe(true)
   })
 })

@@ -9,7 +9,7 @@ export const SelectGroup = SelectPrimitive.Group
 export const SelectValue = SelectPrimitive.Value
 
 export const SelectTrigger = forwardRef<ElementRef<typeof SelectPrimitive.Trigger>, ComponentPropsWithoutRef<typeof SelectPrimitive.Trigger>>(({ className, children, ...props }, ref) => (
-  <SelectPrimitive.Trigger ref={ref} className={cn("flex h-9 w-full items-center justify-between rounded-lg border border-[#dfe4df] bg-white px-3 text-xs text-[#4d5b51] outline-none focus:border-[#91a697] focus:ring-2 focus:ring-[#91a697]/20 disabled:cursor-not-allowed disabled:opacity-50", className)} {...props}>
+  <SelectPrimitive.Trigger ref={ref} className={cn("flex h-9 w-full items-center justify-between rounded-lg border border-[#dfe4df] bg-white px-3 text-[11px] text-[#4d5b51] outline-none focus:border-[#91a697] focus:ring-2 focus:ring-[#91a697]/20 disabled:cursor-not-allowed disabled:opacity-50", className)} {...props}>
     {children}
     <SelectPrimitive.Icon asChild><ChevronDown size={14} className="text-[#8b9b8f]" /></SelectPrimitive.Icon>
   </SelectPrimitive.Trigger>
@@ -26,7 +26,7 @@ export const SelectScrollDownButton = forwardRef<ElementRef<typeof SelectPrimiti
 
 export const SelectContent = forwardRef<ElementRef<typeof SelectPrimitive.Content>, ComponentPropsWithoutRef<typeof SelectPrimitive.Content>>(({ className, children, position = "popper", ...props }, ref) => (
   <SelectPrimitive.Portal>
-    <SelectPrimitive.Content ref={ref} position={position} className={cn("relative z-50 max-h-72 min-w-[8rem] overflow-hidden rounded-lg border border-[#dfe4df] bg-white text-xs text-[#4d5b51] shadow-[0_12px_30px_rgba(31,48,40,0.14)]", position === "popper" && "translate-y-1", className)} {...props}>
+    <SelectPrimitive.Content ref={ref} position={position} className={cn("relative z-50 max-h-72 min-w-[8rem] overflow-hidden rounded-lg border border-[#dfe4df] bg-white text-[11px] text-[#4d5b51] shadow-[0_12px_30px_rgba(31,48,40,0.14)]", position === "popper" && "translate-y-1", className)} {...props}>
       <SelectScrollUpButton />
       <SelectPrimitive.Viewport className="p-1">{children}</SelectPrimitive.Viewport>
       <SelectScrollDownButton />
