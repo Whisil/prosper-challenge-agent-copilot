@@ -1,12 +1,20 @@
-import type { AgentConfig, AgentDraft, AgentEditorAction, AgentNode } from "../model/type"
-import { defaultLayout } from "./flowAdapter"
+import type { AgentConfig, AgentDraft, AgentEdge, AgentEditorAction, AgentNode, AgentProperty, NodeCreationKind } from "../model/type"
+import { documentLayout, runtimeConfigToDocument } from "./agentDocument"
+import { humanizeIdentifier, toIdentifier } from "./identifier"
 
 function cloneNode(node: AgentNode): AgentNode {
+  const id = node.id ?? node.name
   return {
     ...node,
+    id,
+    name: id,
+    title: node.title ?? humanizeIdentifier(node.name),
+    type: node.type ?? (node.end ? "end" : "conversation"),
     task_messages: node.task_messages.map((message) => ({ ...message })),
-    edges: node.edges.map((edge) => ({
+    edges: node.edges.map((edge, index) => ({
       ...edge,
+      id: edge.id ?? `${id}-${toIdentifier(edge.function) || "transition"}-${index + 1}`,
+      kind: edge.kind ?? "condition",
       properties: { ...edge.properties },
       required: [...edge.required],
     })),
@@ -21,58 +29,81 @@ export function cloneAgentConfig(config: AgentConfig): AgentConfig {
 }
 
 export function createAgentDraft(config: AgentConfig): AgentDraft {
+  const document = runtimeConfigToDocument(config)
   return {
-    config: cloneAgentConfig(config),
-    layout: Object.fromEntries(config.nodes.map((node, index) => [
-      node.name,
-      defaultLayout[node.name] ?? { x: 230, y: index * 195 },
-    ])),
+    config: document,
+    layout: documentLayout(document),
   }
 }
 
-function renameNode(draft: AgentDraft, oldName: string, newName: string): AgentDraft {
-  if (!newName.trim() || draft.config.nodes.some((node) => node.name === newName && node.name !== oldName)) {
-    return draft
+export function getNextNodeName(nodes: AgentNode[], kind: NodeCreationKind) {
+  const names = new Set(nodes.map((node) => node.name))
+  const baseName = kind === "end" ? "new_terminal" : `new_${kind}`
+  let index = nodes.length + 1
+  let name = `${baseName}_${index}`
+  while (names.has(name)) {
+    index += 1
+    name = `${baseName}_${index}`
   }
+  return name
+}
 
-  const nodes = draft.config.nodes.map((node) => ({
-    ...node,
-    name: node.name === oldName ? newName : node.name,
-    edges: node.edges.map((edge) => edge.target === oldName ? { ...edge, target: newName } : edge),
-  }))
+export function getNextTransitionName(edges: AgentEdge[]) {
+  const names = new Set(edges.map((edge) => edge.function))
+  let index = edges.length + 1
+  let name = `new_transition_${index}`
+  while (names.has(name)) {
+    index += 1
+    name = `new_transition_${index}`
+  }
+  return name
+}
+
+export function createCanvasTransition(source: AgentNode | undefined, target: AgentNode | undefined): AgentEdge | undefined {
+  if (!source || !target || source.end || source.name === target.name) return undefined
+  return { function: getNextTransitionName(source.edges), description: "", target: target.name, properties: {}, required: [] }
+}
+
+export function createDefaultAgentProperty(): AgentProperty {
+  return { type: "string", description: "" }
+}
+
+export function renameAgentProperty(edge: AgentEdge, currentName: string, nextName: string): AgentEdge | undefined {
+  const trimmedName = toIdentifier(nextName)
+  if (!trimmedName || (trimmedName !== currentName && edge.properties[trimmedName])) return undefined
+  if (trimmedName === currentName) return edge
 
   return {
-    config: {
-      ...draft.config,
-      initial_node: draft.config.initial_node === oldName ? newName : draft.config.initial_node,
-      nodes,
-    },
-    layout: Object.fromEntries(Object.entries(draft.layout).map(([name, position]) => [
-      name === oldName ? newName : name,
-      position,
-    ])),
+    ...edge,
+    properties: Object.fromEntries(Object.entries(edge.properties).map(([name, value]) => [name === currentName ? trimmedName : name, value])),
+    required: edge.required.map((name) => name === currentName ? trimmedName : name),
   }
+}
+
+export function setAgentPropertyRequired(edge: AgentEdge, propertyName: string, required: boolean): AgentEdge {
+  const nextRequired = required ? [...new Set([...edge.required, propertyName])] : edge.required.filter((name) => name !== propertyName)
+  return { ...edge, required: nextRequired }
 }
 
 export function applyAgentAction(draft: AgentDraft, action: AgentEditorAction): AgentDraft {
   switch (action.type) {
     case "reset":
       return action.draft
+    case "update_agent":
+      return { ...draft, config: { ...draft.config, ...action.patch } }
     case "update_node": {
       const node = draft.config.nodes.find((candidate) => candidate.name === action.nodeName)
       if (!node) return draft
-      if (action.patch.name && action.patch.name !== action.nodeName) {
-        const renamed = renameNode(draft, action.nodeName, action.patch.name)
-        if (renamed === draft) return draft
-        const remainingPatch = { ...action.patch }
-        delete remainingPatch.name
-        return applyAgentAction(renamed, { type: "update_node", nodeName: action.patch.name, patch: remainingPatch })
+      const patch = { ...action.patch }
+      if (patch.name !== undefined && patch.title === undefined) {
+        patch.title = patch.name
+        delete patch.name
       }
       return {
         ...draft,
         config: {
           ...draft.config,
-          nodes: draft.config.nodes.map((candidate) => candidate.name === action.nodeName ? { ...candidate, ...action.patch } : candidate),
+          nodes: draft.config.nodes.map((candidate) => candidate.name === action.nodeName ? { ...candidate, ...patch } : candidate),
         },
       }
     }

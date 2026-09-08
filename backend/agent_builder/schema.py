@@ -25,6 +25,9 @@ class Edge:
     # Fields to collect on this edge, as JSON-schema properties.
     properties: dict = field(default_factory=dict)
     required: list = field(default_factory=list)
+    id: Optional[str] = None
+    kind: Optional[str] = None
+    condition: Optional[str] = None
 
     @classmethod
     def from_dict(cls, d: dict) -> "Edge":
@@ -34,6 +37,9 @@ class Edge:
             target=d["target"],
             properties=d.get("properties", {}),
             required=d.get("required", []),
+            id=d.get("id"),
+            kind=d.get("kind"),
+            condition=d.get("condition"),
         )
 
 
@@ -48,17 +54,29 @@ class Node:
     pre_actions: list = field(default_factory=list)
     post_actions: list = field(default_factory=list)
     end: bool = False                                   # terminal -> ends the call
+    id: Optional[str] = None
+    title: Optional[str] = None
+    type: Optional[str] = None
+    tool: Optional[dict] = None
+    branch: Optional[dict] = None
+    transfer: Optional[dict] = None
 
     @classmethod
     def from_dict(cls, d: dict) -> "Node":
         return cls(
-            name=d["name"],
+            name=d.get("name", d.get("id", "")),
             task_messages=d.get("task_messages", []),
             role_message=d.get("role_message"),
             edges=[Edge.from_dict(e) for e in d.get("edges", [])],
             pre_actions=d.get("pre_actions", []),
             post_actions=d.get("post_actions", []),
-            end=d.get("end", False),
+            end=d.get("end", d.get("type") == "end"),
+            id=d.get("id"),
+            title=d.get("title"),
+            type=d.get("type"),
+            tool=d.get("tool"),
+            branch=d.get("branch"),
+            transfer=d.get("transfer"),
         )
 
 
@@ -72,6 +90,8 @@ class AgentConfig:
     persona: str = ""                    # global role_message, applied to every node
     voice_id: str = DEFAULT_VOICE_ID
     model: str = DEFAULT_MODEL
+    version: Optional[int] = None
+    id: Optional[str] = None
 
     @classmethod
     def from_dict(cls, d: dict) -> "AgentConfig":
@@ -82,4 +102,6 @@ class AgentConfig:
             persona=d.get("persona", ""),
             voice_id=d.get("voice_id", DEFAULT_VOICE_ID),
             model=d.get("model", DEFAULT_MODEL),
+            version=d.get("version"),
+            id=d.get("id"),
         )
