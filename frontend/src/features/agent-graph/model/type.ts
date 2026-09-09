@@ -112,6 +112,17 @@ export interface AgentDraft {
   layout: Record<string, XYPosition>
 }
 
+export interface StoredAgent {
+  id: string
+  draft: AgentDraft
+  updatedAt: string
+}
+
+export interface AgentCollection {
+  activeAgentId: string
+  agents: StoredAgent[]
+}
+
 export interface AgentValidationLocation {
   nodeName?: string
   edgeFunction?: string
@@ -146,10 +157,27 @@ export interface TestSession {
   events: TraceEvent[]
 }
 
+export interface CallReviewIssue {
+  title: string
+  explanation: string
+  severity: "low" | "medium" | "high"
+  nodeId?: string
+  edgeId?: string
+}
+
+export interface CallReview {
+  status: "passed" | "needs_attention" | "unavailable"
+  summary: string
+  issues: CallReviewIssue[]
+  recommendedAction: "no_change" | "propose_changes"
+  reviewedAt: string
+  error?: string
+}
+
 export interface CallRecord extends TestSession {
   title: string
-  feedback?: string
   isDemo?: boolean
+  review?: CallReview
 }
 
 export type AgentEditorAction =

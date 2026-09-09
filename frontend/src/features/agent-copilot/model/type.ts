@@ -3,7 +3,6 @@ import type { AgentDocument, AgentEdge, AgentNode, AgentSettingsPatch, AgentVali
 
 export type EvidenceSource =
   | { kind: "call"; traceId: string; text: string; call?: CallRecord }
-  | { kind: "feedback"; text: string }
   | { kind: "guideline"; text: string }
 
 export type GraphOperation =
@@ -45,6 +44,12 @@ export interface CopilotProposalRequest {
     text: string
     call?: CallRecord
   }
+}
+
+export interface ReviewCallRequest {
+  document: AgentDocument
+  baseVersion: string
+  call: CallRecord
 }
 
 export interface ChangeProposal {

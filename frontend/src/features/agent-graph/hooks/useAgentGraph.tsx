@@ -2,19 +2,25 @@ import { useCallback, useEffect, useMemo, useReducer, useState } from "react"
 import { exampleAgent } from "../data/exampleAgent"
 import { createAgentDraft, createCanvasTransition } from "../lib/agentOperations"
 import { createDraftHistory, reduceDraftHistory } from "../lib/history"
-import { loadStoredDraft, loadStoredSnapshots, saveStoredDraft } from "../lib/draftPersistence"
+import { loadStoredSnapshots, saveStoredDraft } from "../lib/draftPersistence"
+import { createAgentCollection, createStoredAgent, loadAgentCollection, saveAgentCollection, updateStoredAgent } from "../lib/agentCollection"
 import { validateAgentConfig } from "../lib/validateAgent"
-import type { AgentConfig, AgentEdge, AgentEditorAction, AgentNode, ConnectionInteractionState, NodeCreationInput, NodeCreationKind, TransitionReference } from "../model/type"
+import type { AgentCollection, AgentConfig, AgentEdge, AgentEditorAction, AgentNode, ConnectionInteractionState, NodeCreationInput, NodeCreationKind, TransitionReference } from "../model/type"
 import { defaultNodePosition } from "../lib/graphLayout"
 import { humanizeIdentifier, toIdentifier } from "../lib/identifier"
 import { applyGraphOperations } from "@/features/agent-copilot/lib/operationApplier"
 import type { GraphOperation } from "@/features/agent-copilot/model/type"
 
 export function useAgentGraph() {
-  const storedDraft = useMemo(() => loadStoredDraft(), [])
-  const initialDraft = useMemo(() => storedDraft ?? createAgentDraft(exampleAgent), [storedDraft])
+  const storedCollection = useMemo(() => loadAgentCollection(), [])
+  const initialCollection = useMemo<AgentCollection>(() => storedCollection ?? createAgentCollection(exampleAgent), [storedCollection])
+  const initialAgent = useMemo(() => initialCollection.agents.find((agent) => agent.id === initialCollection.activeAgentId) ?? initialCollection.agents[0], [initialCollection])
+  const initialDraft = initialAgent.draft
   const [history, dispatch] = useReducer(reduceDraftHistory, initialDraft, createDraftHistory)
   const draft = history.present
+  const [agents, setAgents] = useState(initialCollection.agents)
+  const [activeAgentId, setActiveAgentId] = useState(initialCollection.activeAgentId)
+  const [hasPersistentCollection, setHasPersistentCollection] = useState(Boolean(storedCollection))
   const [savedDraft, setSavedDraft] = useState(initialDraft)
   const [snapshots, setSnapshots] = useState(() => loadStoredSnapshots())
   const [selectedNodeName, setSelectedNodeName] = useState<string | undefined>(initialDraft.config.initial_node)
@@ -107,26 +113,61 @@ export function useAgentGraph() {
   const cancelConnection = useCallback(() => setConnectionInteraction({ mode: "idle" }), [])
   const moveNode = useCallback((nodeName: string, position: { x: number; y: number }) => apply({ type: "move_node", nodeName, position }), [apply])
   const setInitialNode = useCallback((nodeName: string) => apply({ type: "set_initial_node", nodeName }), [apply])
+  const persistCurrentAgent = useCallback((nextDraft: typeof draft, nextAgents = agents, nextActiveAgentId = activeAgentId) => {
+    const nextAgent = { id: nextActiveAgentId, draft: nextDraft, updatedAt: new Date().toISOString() }
+    const nextCollection = updateStoredAgent({ activeAgentId: nextActiveAgentId, agents: nextAgents }, nextAgent)
+    setAgents(nextCollection.agents)
+    saveAgentCollection(nextCollection)
+    return nextCollection
+  }, [activeAgentId, agents])
   const resetDraft = useCallback(() => {
     const factoryDraft = createAgentDraft(exampleAgent)
+    factoryDraft.config.id = activeAgentId
     dispatch({ type: "replace", draft: factoryDraft })
     setSavedDraft(factoryDraft)
+    persistCurrentAgent(factoryDraft)
+    setHasPersistentCollection(true)
     setSelectedNodeName(factoryDraft.config.initial_node)
     setSelectedTransition(undefined)
-  }, [])
+  }, [activeAgentId, persistCurrentAgent])
   const createAgent = useCallback((config: AgentConfig) => {
-    const nextDraft = createAgentDraft(config)
-    dispatch({ type: "replace", draft: nextDraft })
-    setSelectedNodeName(nextDraft.config.initial_node)
+    const nextAgent = createStoredAgent(config)
+    const currentAgent = { id: activeAgentId, draft, updatedAt: new Date().toISOString() }
+    const existingAgents = agents.map((agent) => agent.id === activeAgentId ? currentAgent : agent)
+    const nextCollection = { activeAgentId: nextAgent.id, agents: [...existingAgents, nextAgent] }
+    setAgents(nextCollection.agents)
+    setActiveAgentId(nextAgent.id)
+    setHasPersistentCollection(true)
+    saveAgentCollection(nextCollection)
+    dispatch({ type: "replace", draft: nextAgent.draft })
+    setSavedDraft(nextAgent.draft)
+    setSnapshots([])
+    setSelectedNodeName(nextAgent.draft.config.initial_node)
     setSelectedTransition(undefined)
-  }, [])
+  }, [activeAgentId, agents, draft])
+  const selectAgent = useCallback((agentId: string) => {
+    if (agentId === activeAgentId) return
+    const target = agents.find((agent) => agent.id === agentId)
+    if (!target) return
+    const currentAgent = { id: activeAgentId, draft, updatedAt: new Date().toISOString() }
+    const nextCollection = { activeAgentId: agentId, agents: agents.map((agent) => agent.id === activeAgentId ? currentAgent : agent) }
+    setAgents(nextCollection.agents)
+    setActiveAgentId(agentId)
+    saveAgentCollection(nextCollection)
+    dispatch({ type: "replace", draft: target.draft })
+    setSavedDraft(target.draft)
+    setSnapshots([])
+    setSelectedNodeName(target.draft.config.initial_node)
+    setSelectedTransition(undefined)
+  }, [activeAgentId, agents, draft])
   const saveDraft = useCallback(() => {
     const nextDraft = { ...draft, config: { ...draft.config, revision: draft.config.revision + 1 } }
     dispatch({ type: "replace", draft: nextDraft })
     saveStoredDraft(nextDraft)
+    persistCurrentAgent(nextDraft)
     setSnapshots(loadStoredSnapshots())
     setSavedDraft(nextDraft)
-  }, [draft])
+  }, [draft, persistCurrentAgent])
   const loadDraft = useCallback((nextDraft: typeof draft) => {
     dispatch({ type: "replace", draft: nextDraft })
     setSavedDraft(nextDraft)
@@ -145,7 +186,9 @@ export function useAgentGraph() {
 
   return {
     agent: draft.config,
-    hasStoredDraft: Boolean(storedDraft),
+    agents,
+    activeAgentId,
+    hasStoredDraft: hasPersistentCollection,
     draft,
     selectedNode,
     selectedNodeName,
@@ -166,6 +209,7 @@ export function useAgentGraph() {
     cancelConnection,
     resetDraft,
     createAgent,
+    selectAgent,
     saveDraft,
     loadDraft,
     applyCopilotOperations,

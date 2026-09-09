@@ -135,7 +135,6 @@ async def run_bot(
 async def bot(runner_args: RunnerArguments):
     """Entry point invoked by the Pipecat dev runner (and Pipecat Cloud)."""
     transport = await create_transport(runner_args, transport_params)
-    start_control_server()
     builder = AgentBuilder.from_json(active_flow_path(AGENT_FLOW))
     await run_bot(transport, runner_args, builder)
 
@@ -143,4 +142,6 @@ async def bot(runner_args: RunnerArguments):
 if __name__ == "__main__":
     from pipecat.runner.run import main
 
+    # The frontend needs the control API before the first voice client connects.
+    start_control_server()
     main()

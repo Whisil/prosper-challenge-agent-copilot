@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { exampleAgent } from "../data/exampleAgent"
-import { documentToRuntimeConfig, parseAgentDocument, runtimeConfigToDocument } from "./agentDocument"
+import { documentToDraft, documentToRuntimeConfig, parseAgentDocument, runtimeConfigToDocument } from "./agentDocument"
 
 describe("agent document adapters", () => {
   it("migrates the legacy runtime contract into a versioned document", () => {
@@ -29,5 +29,13 @@ describe("agent document adapters", () => {
 
     expect(imported.version).toBe(1)
     expect(imported.nodes.every((node) => node.id && node.title && node.type)).toBe(true)
+  })
+
+  it("keeps every generated node in a preview draft", () => {
+    const document = runtimeConfigToDocument(exampleAgent)
+    document.nodes.push({ id: "extra", name: "extra", title: "Extra", type: "conversation", task_messages: [{ role: "developer", content: "Handle the extra step." }], edges: [] })
+    const draft = documentToDraft(document)
+    expect(draft.config.nodes.map((node) => node.id)).toContain("extra")
+    expect(draft.layout.extra).toEqual({ x: 230, y: 1560 })
   })
 })

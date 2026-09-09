@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { loadCallHistory, updateCallFeedback } from "./callHistoryStorage"
+import { loadCallHistory, summarizeTraceEvent, updateCallReview } from "./callHistoryStorage"
 
 describe("call history storage", () => {
   it("starts with clearly labeled synthetic evidence", () => {
@@ -7,8 +7,13 @@ describe("call history storage", () => {
     expect(loadCallHistory().every((record) => record.isDemo)).toBe(true)
   })
 
-  it("updates feedback on the selected record", () => {
+  it("updates AI review on the selected record", () => {
     const records = loadCallHistory()
-    expect(updateCallFeedback(records[0].id, "New feedback")[0].feedback).toBe("New feedback")
+    const review = { status: "passed" as const, summary: "No issue found.", issues: [], recommendedAction: "no_change" as const, reviewedAt: new Date().toISOString() }
+    expect(updateCallReview(records[0].id, review)[0].review?.summary).toBe("No issue found.")
+  })
+
+  it("turns runtime events into human-readable steps", () => {
+    expect(summarizeTraceEvent({ timestamp: "2026-01-01T10:00:00Z", kind: "node_entered", nodeId: "greeting" }).title).toBe("Conversation step started")
   })
 })

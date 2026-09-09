@@ -23,9 +23,10 @@ interface AgentGraphProps {
   onStartConnection: () => void
   onCancelConnection: () => void
   isDirty: boolean
+  readOnly?: boolean
 }
 
-function GraphContent({ config, layout, selectedNodeName, onSelectNode, onCreateNode, onDeleteNode, onMoveNode, validationErrors, onCreateTransition, onSelectTransition, connectionInteraction, onStartConnection, onCancelConnection, isDirty }: AgentGraphProps) {
+function GraphContent({ config, layout, selectedNodeName, onSelectNode, onCreateNode, onDeleteNode, onMoveNode, validationErrors, onCreateTransition, onSelectTransition, connectionInteraction, onStartConnection, onCancelConnection, isDirty, readOnly = false }: AgentGraphProps) {
   const { fitView } = useReactFlow()
   const [creationKind, setCreationKind] = useState<NodeCreationKind | null>(null)
   const [isConnecting, setIsConnecting] = useState(false)
@@ -60,7 +61,7 @@ function GraphContent({ config, layout, selectedNodeName, onSelectNode, onCreate
 
   return (
     <div className="relative h-full w-full canvas-grid">
-      <GraphToolbar onFitView={() => fitView({ padding: 0.28, duration: 350 })} onAddNode={setCreationKind} />
+      <GraphToolbar onFitView={() => fitView({ padding: 0.28, duration: 350 })} onAddNode={setCreationKind} readOnly={readOnly} />
       {isDirty && <div className="absolute right-5 top-5 z-10 rounded-full border border-[#d6c99b] bg-[#fffaf0] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9b7b2f] shadow-sm">Unsaved</div>}
       {isConnecting && <div className="pointer-events-none absolute left-1/2 top-5 z-10 -translate-x-1/2 rounded-full border border-[#c5d7c8] bg-white/95 px-3 py-1.5 text-[11px] font-semibold text-[#66806d] shadow-sm">Drop on a node to connect</div>}
       <ReactFlow
@@ -69,25 +70,25 @@ function GraphContent({ config, layout, selectedNodeName, onSelectNode, onCreate
         nodeTypes={{ agentNode: AgentNode }}
         onNodeClick={onNodeClick}
         onEdgeClick={onEdgeClick}
-        onNodesChange={onNodesChange}
-        onBeforeDelete={({ nodes: deletedNodes }) => Promise.resolve(deletedNodes.every((node) => node.id !== config.initial_node))}
-        onNodesDelete={(deletedNodes) => deletedNodes.forEach((node) => onDeleteNode(node.id))}
-        onNodeDragStop={(_, node) => onMoveNode(node.id, node.position)}
-        onConnect={onConnect}
-        onConnectStart={() => { setIsConnecting(true); onStartConnection() }}
-        onConnectEnd={() => { setIsConnecting(false); if (connectionInteraction.mode !== "idle") onCancelConnection() }}
+        onNodesChange={readOnly ? undefined : onNodesChange}
+        onBeforeDelete={readOnly ? undefined : ({ nodes: deletedNodes }) => Promise.resolve(deletedNodes.every((node) => node.id !== config.initial_node))}
+        onNodesDelete={readOnly ? undefined : (deletedNodes) => deletedNodes.forEach((node) => onDeleteNode(node.id))}
+        onNodeDragStop={readOnly ? undefined : (_, node) => onMoveNode(node.id, node.position)}
+        onConnect={readOnly ? undefined : onConnect}
+        onConnectStart={readOnly ? undefined : () => { setIsConnecting(true); onStartConnection() }}
+        onConnectEnd={readOnly ? undefined : () => { setIsConnecting(false); if (connectionInteraction.mode !== "idle") onCancelConnection() }}
         isValidConnection={(connection) => Boolean(connection.source && connection.target && (connection.sourceHandle === NEW_TRANSITION_HANDLE || connection.sourceHandle?.startsWith("connection-")) && connection.source !== connection.target)}
         fitView
         fitViewOptions={{ padding: 0.28 }}
-        nodesDraggable
-        nodesConnectable
+        nodesDraggable={!readOnly}
+        nodesConnectable={!readOnly}
         elementsSelectable
         proOptions={{ hideAttribution: true }}
       >
         <Background gap={18} size={1} color="#d9ddd9" />
         <Controls showInteractive={false} />
       </ReactFlow>
-      <NodeCreationDialog kind={creationKind} nodes={config.nodes} onCancel={() => setCreationKind(null)} onSubmit={(input) => { if (creationKind) onCreateNode(creationKind, input); setCreationKind(null) }} />
+      {!readOnly && <NodeCreationDialog kind={creationKind} nodes={config.nodes} onCancel={() => setCreationKind(null)} onSubmit={(input) => { if (creationKind) onCreateNode(creationKind, input); setCreationKind(null) }} />}
     </div>
   )
 }

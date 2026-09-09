@@ -1,7 +1,8 @@
 import type { AgentDocument, TestSession } from "@/features/agent-graph/model/type"
-import type { ChangeProposal, CopilotProposalRequest } from "@/features/agent-copilot/model/type"
+import type { ChangeProposal, CopilotProposalRequest, ReviewCallRequest } from "@/features/agent-copilot/model/type"
+import type { CallReview } from "@/features/agent-graph/model/type"
 
-const API_URL = import.meta.env.VITE_AGENT_API_URL || "http://localhost:8000"
+const API_URL = import.meta.env.VITE_AGENT_API_URL || "http://127.0.0.1:8000"
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response
@@ -33,4 +34,8 @@ export function getTestSession(sessionId: string) {
 
 export function createCopilotProposal(payload: CopilotProposalRequest) {
   return request<ChangeProposal>("/api/copilot/propose", { method: "POST", body: JSON.stringify(payload) })
+}
+
+export function reviewCall(payload: ReviewCallRequest) {
+  return request<CallReview>("/api/copilot/review-call", { method: "POST", body: JSON.stringify(payload) })
 }

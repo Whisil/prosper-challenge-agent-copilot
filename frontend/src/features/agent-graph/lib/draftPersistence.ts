@@ -57,21 +57,6 @@ export function clearStoredDraft(): void {
   }
 }
 
-export function downloadDraft(draft: AgentDraft, filename = `${draft.config.id}.json`): void {
-  if (typeof document === "undefined") return
-  const blob = new Blob([serializeDraft(draft)], { type: "application/json" })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement("a")
-  link.href = url
-  link.download = filename
-  link.click()
-  URL.revokeObjectURL(url)
-}
-
-export async function readDraftFile(file: File): Promise<AgentDraft> {
-  return parseDraft(JSON.parse(await file.text()))
-}
-
 export function isAgentDocument(value: unknown): value is AgentDocument {
   return Boolean(value && typeof value === "object" && "version" in value && "nodes" in value)
 }

@@ -1,4 +1,4 @@
-import { CURRENT_AGENT_DOCUMENT_VERSION, type AgentConfig, type AgentDocument, type AgentEdge, type AgentNode } from "../model/type"
+import { CURRENT_AGENT_DOCUMENT_VERSION, type AgentConfig, type AgentDocument, type AgentDraft, type AgentEdge, type AgentNode } from "../model/type"
 import { defaultNodePosition } from "./graphLayout"
 import { humanizeIdentifier, toIdentifier } from "./identifier"
 
@@ -35,6 +35,19 @@ export function runtimeConfigToDocument(config: AgentConfig): AgentDocument {
     id: toIdentifier(config.name) || "agent",
     revision: 1,
     nodes: config.nodes.map(cloneNode),
+  }
+}
+
+export function documentToDraft(document: AgentDocument): AgentDraft {
+  const normalized = runtimeConfigToDocument(document)
+  return {
+    config: {
+      ...normalized,
+      id: document.id,
+      revision: document.revision,
+      version: document.version,
+    },
+    layout: documentLayout(document),
   }
 }
 

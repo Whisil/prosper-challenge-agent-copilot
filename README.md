@@ -34,7 +34,7 @@ Start the frontend in another:
 make frontend-dev
 ```
 
-Open [http://localhost:5173](http://localhost:5173) to use the agent workspace. The builder supports onboarding templates, blank-agent creation, typed nodes, local draft versions, JSON import/export, validation, and a draft-aware **Test call**. **Call history** stores local test traces and feedback, while the Evidence-to-Flow Copilot sends selected evidence to the backend AI endpoint and returns a reviewable stable-ID proposal with an optional preview call. `Ctrl+C` stops either process. Run `make help` to list all targets.
+Open [http://localhost:5173](http://localhost:5173) to use the agent workspace. The builder supports template or blank-agent onboarding, multi-agent browser-local storage, typed nodes, local draft versions, validation, and a draft-aware **Test call**. **Call history** stores local traces and automatic AI reviews, while the feedback-driven Evidence-to-Flow Copilot turns a review or guideline into a constrained stable-ID proposal with an optional preview call. Initial AI graph creation is intentionally disabled until the manual builder is stable. `Ctrl+C` stops either process. Run `make help` to list all targets.
 
 Prefer raw commands? Use:
 
@@ -54,7 +54,7 @@ Remember to update `backend/.env` with API keys. See [`docs/development.md`](doc
 | `backend/bot.py` | The voice pipeline (WebRTC + ElevenLabs STT/TTS + OpenAI LLM). Loads an agent JSON via `AgentBuilder` and runs it. No graph logic lives here. |
 | `backend/agent_builder/` | All agent-building code. `schema.py` = the declarative `AgentConfig` / `Node` / `Edge` contract; `builder.py` = `AgentBuilder`, which loads + validates the JSON and compiles it into a Pipecat Flows graph. |
 | `backend/example_flow.json` | The example agent **as data** — a clinic scheduler. The artifact the Phase 2 Composer generates/edits. |
-| `frontend/` | The React agent workspace. It uses compact typed node setup, four-sided canvas connection dots, stable IDs with human-readable titles, simplified information collection, local draft history/import/export, visible validation locations, collapsible navigation, onboarding templates, local call history and feedback, the AI Evidence Board, and active/preview test calls. |
+| `frontend/` | The React agent workspace. It uses compact typed node setup, four-sided canvas connection dots, stable IDs with human-readable titles, simplified information collection, local agent and draft history, visible validation locations, collapsible navigation, onboarding templates, local call history and AI reviews, the constrained AI Evidence Board, and active/preview test calls. |
 
 Frontend architecture and naming conventions are documented in [`docs/frontend-architecture.md`](docs/frontend-architecture.md). The end-to-end code walkthrough is in [`docs/product-code-flow.md`](docs/product-code-flow.md). Repository contribution rules live in [`AGENTS.md`](AGENTS.md) and [`frontend/AGENTS.md`](frontend/AGENTS.md).
 

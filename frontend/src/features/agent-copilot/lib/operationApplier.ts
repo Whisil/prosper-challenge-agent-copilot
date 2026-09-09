@@ -18,6 +18,10 @@ function nodeById(document: AgentDocument, id: string) {
   return document.nodes.find((node) => (node.id ?? node.name) === id)
 }
 
+function nodeByName(document: AgentDocument, name: string) {
+  return document.nodes.find((node) => node.name === name)
+}
+
 function edgeLocation(document: AgentDocument, edgeId: string): { source: AgentNode; edge: AgentEdge } | undefined {
   for (const source of document.nodes) {
     const edge = source.edges.find((candidate) => (candidate.id ?? `${source.name}-${candidate.function}`) === edgeId)
@@ -29,9 +33,10 @@ function edgeLocation(document: AgentDocument, edgeId: string): { source: AgentN
 export function validateGraphOperation(document: AgentDocument, operation: GraphOperation): AgentValidationError[] {
   switch (operation.op) {
     case "add_node": {
-      const id = operation.node.id ?? operation.node.name
-      if (!id.trim()) return [operationError("A proposed node needs a stable ID.")]
+      const id = operation.node.id ?? ""
+      if (!id.trim() || !operation.node.name.trim()) return [operationError("A proposed node needs a stable ID and runtime name.")]
       if (nodeById(document, id)) return [operationError(`Node ID '${id}' already exists.`)]
+      if (nodeByName(document, operation.node.name)) return [operationError(`Node name '${operation.node.name}' already exists.`)]
       return []
     }
     case "update_node":
@@ -40,11 +45,11 @@ export function validateGraphOperation(document: AgentDocument, operation: Graph
       return []
     case "remove_node":
       if (!nodeById(document, operation.nodeId)) return [operationError(`Node '${operation.nodeId}' does not exist.`)]
-      if (document.initial_node === operation.nodeId) return [operationError("The entry node cannot be deleted.")]
+      if (nodeById(document, operation.nodeId)?.name === document.initial_node) return [operationError("The entry node cannot be deleted.")]
       return []
     case "add_edge": {
       const source = nodeById(document, operation.sourceNodeId)
-      const target = nodeById(document, operation.edge.target)
+      const target = nodeByName(document, operation.edge.target)
       if (!source) return [operationError(`Source node '${operation.sourceNodeId}' does not exist.`)]
       if (source.end || source.type === "end") return [operationError("End nodes cannot be transition sources.")]
       if (!target) return [operationError(`Target node '${operation.edge.target}' does not exist.`)]
@@ -57,7 +62,7 @@ export function validateGraphOperation(document: AgentDocument, operation: Graph
       const location = edgeLocation(document, operation.edgeId)
       if (!location) return [operationError(`Edge '${operation.edgeId}' does not exist.`)]
       if (operation.patch.id !== undefined || operation.patch.function !== undefined) return [operationError("Proposals cannot rename stable edge identifiers or runtime function names.")]
-      if (operation.patch.target !== undefined && !nodeById(document, operation.patch.target)) return [operationError(`Target node '${operation.patch.target}' does not exist.`)]
+      if (operation.patch.target !== undefined && !nodeByName(document, operation.patch.target)) return [operationError(`Target node '${operation.patch.target}' does not exist.`)]
       return []
     }
     case "remove_edge":
@@ -76,7 +81,6 @@ export function applyGraphOperation(draft: AgentDraft, operation: GraphOperation
     case "add_node": {
       const node = JSON.parse(JSON.stringify(operation.node)) as AgentNode
       node.id = node.id ?? node.name
-      node.name = node.id
       next.config.nodes.push(node)
       next.layout[node.name] = operation.position ?? { x: 120, y: 120 }
       break
@@ -86,11 +90,13 @@ export function applyGraphOperation(draft: AgentDraft, operation: GraphOperation
       if (node) Object.assign(node, operation.patch)
       break
     }
-    case "remove_node":
+    case "remove_node": {
+      const removed = nodeById(next.config, operation.nodeId)
       next.config.nodes = next.config.nodes.filter((node) => (node.id ?? node.name) !== operation.nodeId)
-      next.config.nodes.forEach((node) => { node.edges = node.edges.filter((edge) => edge.target !== operation.nodeId) })
-      delete next.layout[operation.nodeId]
+      next.config.nodes.forEach((node) => { node.edges = node.edges.filter((edge) => edge.target !== removed?.name) })
+      if (removed) delete next.layout[removed.name]
       break
+    }
     case "add_edge": {
       const source = nodeById(next.config, operation.sourceNodeId)
       if (source) source.edges.push(JSON.parse(JSON.stringify(operation.edge)) as AgentEdge)

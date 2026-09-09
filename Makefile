@@ -2,6 +2,8 @@
 # Dependencies are managed with uv (https://docs.astral.sh/uv/).
 
 PROJECT := backend
+UV_CACHE_DIR ?= $(CURDIR)/.uv-cache
+RUNNER_HOST ?= 127.0.0.1
 
 .PHONY: help install run backend-test frontend-install frontend-dev frontend-build frontend-lint frontend-test frontend-typecheck clean
 
@@ -10,13 +12,13 @@ help: ## Show available targets
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
 
 install: ## Create the venv and install dependencies (from uv.lock)
-	uv sync --directory $(PROJECT)
+	UV_CACHE_DIR=$(UV_CACHE_DIR) uv sync --directory $(PROJECT)
 
 run: ## Run the voice agent (then open http://localhost:7860/client)
-	uv run --directory $(PROJECT) python bot.py
+	UV_CACHE_DIR=$(UV_CACHE_DIR) uv run --directory $(PROJECT) python bot.py --host $(RUNNER_HOST)
 
 backend-test: ## Run backend tests
-	uv run --directory $(PROJECT) pytest
+	UV_CACHE_DIR=$(UV_CACHE_DIR) uv run --directory $(PROJECT) pytest
 
 frontend-install: ## Install frontend dependencies with pnpm
 	pnpm --dir frontend install
