@@ -1,4 +1,4 @@
-import { ChevronDown, History, PhoneCall, Plus, Redo2, Save, Settings2, Undo2, CheckCircle2 } from "lucide-react"
+import { ChevronDown, PhoneCall, Plus, Redo2, Save, Settings2, Trash2, Undo2 } from "lucide-react"
 import { useRef, useState } from "react"
 import { Button } from "@/components/ui/Button"
 import { useClickOutside } from "@/lib/useClickOutside"
@@ -11,6 +11,8 @@ interface TopbarProps {
   agentName: string
   persona: string
   onUpdatePersona: (persona: string) => void
+  onDeleteAgent: () => void
+  canDeleteAgent: boolean
   onTestCall: () => void
   agents: StoredAgent[]
   activeAgentId: string
@@ -24,15 +26,13 @@ interface TopbarProps {
   canUndo: boolean
   canRedo: boolean
   onCreateAgent: (config: AgentConfig) => void
-  onReset: () => void
-  onOpenHistory: () => void
+  testCallDisabled?: boolean
 }
 
-export function Topbar({ agentName, persona, onUpdatePersona, onTestCall, agents, activeAgentId, onSelectAgent, isDirty, validationErrors, onSelectValidationError, onSave, onUndo, onRedo, canUndo, canRedo, onCreateAgent, onReset, onOpenHistory }: TopbarProps) {
+export function Topbar({ agentName, persona, onUpdatePersona, onDeleteAgent, canDeleteAgent, onTestCall, agents, activeAgentId, onSelectAgent, isDirty, validationErrors, onSelectValidationError, onSave, onUndo, onRedo, canUndo, canRedo, onCreateAgent, testCallDisabled = false }: TopbarProps) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [creationOpen, setCreationOpen] = useState(false)
   const [agentMenuOpen, setAgentMenuOpen] = useState(false)
-  const [validationRequest, setValidationRequest] = useState(0)
   const agentMenuRef = useRef<HTMLDivElement>(null)
   useClickOutside(agentMenuRef, () => setAgentMenuOpen(false), agentMenuOpen)
   return (
@@ -47,28 +47,25 @@ export function Topbar({ agentName, persona, onUpdatePersona, onTestCall, agents
             {agentMenuOpen && <div className="absolute left-0 top-full z-50 mt-2 w-64 rounded-xl border border-[#dfe4df] bg-white p-2 shadow-[0_16px_35px_rgba(31,48,40,0.16)]" role="listbox" aria-label="Agents">
               <div className="space-y-1">{agents.map((storedAgent) => <button key={storedAgent.id} type="button" role="option" aria-selected={storedAgent.id === activeAgentId} onClick={() => { onSelectAgent(storedAgent.id); setAgentMenuOpen(false) }} className={`w-full rounded-lg px-3 py-2 text-left text-[11px] font-semibold ${storedAgent.id === activeAgentId ? "bg-[#f0f3ef] text-[#37413c]" : "text-[#6e7c72] hover:bg-[#f7faf7]"}`}>{storedAgent.draft.config.name}</button>)}</div>
               <Button type="button" size="sm" variant="outline" className="w-full justify-center mt-2" onClick={() => { setAgentMenuOpen(false); setCreationOpen(true) }}><Plus size={13} /> Add agent</Button>
-              <Button type="button" size="sm" variant="ghost" className="mt-1 w-full justify-center" onClick={() => { onReset(); setAgentMenuOpen(false) }}>Reset example template</Button>
             </div>}
           </div>
-          <ValidationSummary errors={validationErrors} isDirty={isDirty} onSelectError={onSelectValidationError} openRequest={validationRequest} />
+          <ValidationSummary errors={validationErrors} isDirty={isDirty} onSelectError={onSelectValidationError} />
         </div>
       </div>
       <div className="flex items-center gap-1.5">
         <Button size="sm" variant="ghost" onClick={onUndo} disabled={!canUndo} title="Undo"><Undo2 size={14} /></Button>
         <Button size="sm" variant="ghost" onClick={onRedo} disabled={!canRedo} title="Redo"><Redo2 size={14} /></Button>
-        <Button size="sm" variant="ghost" onClick={() => setValidationRequest((value) => value + 1)} title="Validate draft"><CheckCircle2 size={14} /> Validate</Button>
-        <Button size="sm" variant="ghost" onClick={onOpenHistory} title="Draft history"><History size={14} /></Button>
         <Button size="sm" variant={isDirty ? "outline" : "ghost"} onClick={onSave} disabled={!isDirty} title="Save draft"><Save size={14} />{isDirty ? "Save" : "Saved"}</Button>
         <Button size="sm" variant="ghost" onClick={() => { setAgentMenuOpen(false); setSettingsOpen(true) }} aria-label="Open agent settings" title="Open agent settings">
           <Settings2 size={14} />
           Agent settings
         </Button>
-        <Button size="sm" variant="primary" onClick={onTestCall}>
+        <Button size="sm" variant="primary" onClick={onTestCall} disabled={testCallDisabled} title={testCallDisabled ? "Apply or deny the suggested fix before starting a test call" : "Start a test call"}>
           <PhoneCall size={14} />
           Test call
         </Button>
       </div>
-      <AgentSettingsDialog open={settingsOpen} persona={persona} onOpenChange={setSettingsOpen} onSave={onUpdatePersona} />
+      <AgentSettingsDialog open={settingsOpen} persona={persona} canDelete={canDeleteAgent} onOpenChange={setSettingsOpen} onSave={onUpdatePersona} onDelete={onDeleteAgent} />
       <AgentCreationDialog open={creationOpen} onOpenChange={setCreationOpen} onCreate={onCreateAgent} />
     </header>
   )

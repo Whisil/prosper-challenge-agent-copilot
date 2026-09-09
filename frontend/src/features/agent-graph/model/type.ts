@@ -71,8 +71,8 @@ export interface AgentNode {
   pre_actions?: unknown[]
   post_actions?: unknown[]
   end?: boolean
-  tool?: AgentToolConfig
-  transfer?: AgentTransferConfig
+  tool?: AgentToolConfig | null
+  transfer?: AgentTransferConfig | null
 }
 
 export interface AgentToolConfig {
@@ -172,6 +172,7 @@ export interface CallReview {
   recommendedAction: "no_change" | "propose_changes"
   reviewedAt: string
   error?: string
+  resolution?: "resolved"
 }
 
 export interface CallRecord extends TestSession {

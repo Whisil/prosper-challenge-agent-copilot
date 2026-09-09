@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { completedFromTerminalEvidence, hasTerminalEvidence, loadCallHistory, resolveTransitionDisplayName, sampleCall, summarizeTraceEvent, updateCallReview } from "./callHistoryStorage"
+import { completedFromTerminalEvidence, hasTerminalEvidence, loadCallHistory, resolveCallReview, resolveTransitionDisplayName, sampleCall, summarizeTraceEvent, updateCallReview } from "./callHistoryStorage"
 
 describe("call history storage", () => {
   it("starts with one clearly labelled sample call", () => {
@@ -7,7 +7,7 @@ describe("call history storage", () => {
 
     expect(records).toHaveLength(1)
     expect(records[0].isSample).toBe(true)
-    expect(records[0].agentName).toBe("Prosper Flow Test Agent")
+    expect(records[0].agentName).toBe("Prosper Review Example")
   })
 
   it("recognizes a terminal trace before the backend status changes", () => {
@@ -21,6 +21,13 @@ describe("call history storage", () => {
     const review = { status: "passed" as const, summary: "No issue found.", issues: [], recommendedAction: "no_change" as const, reviewedAt: new Date().toISOString() }
 
     expect(updateCallReview(sampleCall.id, review)[0].review?.summary).toBe("No issue found.")
+  })
+
+  it("marks the source review resolved after an accepted fix", () => {
+    const records = resolveCallReview(sampleCall.id)
+
+    expect(records[0].review?.resolution).toBe("resolved")
+    expect(records[0].reviewState).toBe("complete")
   })
 
   it("turns runtime events into human-readable steps", () => {

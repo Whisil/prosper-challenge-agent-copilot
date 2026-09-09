@@ -1,4 +1,5 @@
 import type { AgentCollection, AgentConfig, AgentDraft, StoredAgent } from "../model/type"
+import { reviewExampleAgent, showcaseAgent } from "../data/agentTemplates"
 import { createAgentDraft } from "./agentOperations"
 import { loadStoredDraft } from "./draftPersistence"
 import { defaultEdgeHandleLayout, edgeHandleKey } from "./agentDocument"
@@ -22,6 +23,17 @@ export function createStoredAgent(config: AgentConfig, id = createAgentId()): St
 export function createAgentCollection(config: AgentConfig): AgentCollection {
   const agent = createStoredAgent(config)
   return { activeAgentId: agent.id, agents: [agent] }
+}
+
+export function ensureShowcaseAgent(collection: AgentCollection): AgentCollection {
+  if (collection.agents.some((agent) => agent.draft.config.name === showcaseAgent.name)) return collection
+  return { ...collection, agents: [...collection.agents, createStoredAgent(showcaseAgent)] }
+}
+
+export function ensureDefaultAgents(collection: AgentCollection): AgentCollection {
+  const withShowcase = ensureShowcaseAgent(collection)
+  if (withShowcase.agents.some((agent) => agent.draft.config.name === reviewExampleAgent.name)) return withShowcase
+  return { ...withShowcase, agents: [...withShowcase.agents, createStoredAgent(reviewExampleAgent)] }
 }
 
 function migrateStoredDraft(draft: AgentDraft): AgentDraft {
@@ -62,8 +74,9 @@ export function loadAgentCollection(): AgentCollection | undefined {
     try {
       const parsed = parseCollection(JSON.parse(raw))
       if (parsed) {
-        saveAgentCollection(parsed)
-        return parsed
+        const ensured = ensureDefaultAgents(parsed)
+        saveAgentCollection(ensured)
+        return ensured
       }
     } catch {
       window.localStorage.removeItem(AGENT_COLLECTION_STORAGE_KEY)
@@ -74,7 +87,7 @@ export function loadAgentCollection(): AgentCollection | undefined {
   const id = legacyDraft.config.id || createAgentId()
   legacyDraft.config.id = id
   const edgeHandles = legacyDraft.edgeHandles ?? Object.fromEntries(legacyDraft.config.nodes.flatMap((node) => node.edges.map((edge, index) => [edgeHandleKey(node.name, edge, index), defaultEdgeHandleLayout()])))
-  const collection = { activeAgentId: id, agents: [{ id, draft: { ...legacyDraft, edgeHandles }, updatedAt: now() }] }
+  const collection = ensureDefaultAgents({ activeAgentId: id, agents: [{ id, draft: { ...legacyDraft, edgeHandles }, updatedAt: now() }] })
   saveAgentCollection(collection)
   return collection
 }

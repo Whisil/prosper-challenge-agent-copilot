@@ -1,5 +1,5 @@
 import { AlertCircle, Check, ChevronDown, TriangleAlert } from "lucide-react"
-import { useEffect, useRef, useState } from "react"
+import { useRef, useState } from "react"
 import type { AgentValidationError } from "@/features/agent-graph/model/type"
 import { groupValidationErrors, validationLocationLabel } from "@/features/agent-graph/lib/validationPresentation"
 import { useClickOutside } from "@/lib/useClickOutside"
@@ -8,13 +8,11 @@ interface ValidationSummaryProps {
   errors: AgentValidationError[]
   isDirty: boolean
   onSelectError: (error: AgentValidationError) => void
-  openRequest?: number
 }
 
-export function ValidationSummary({ errors, isDirty, onSelectError, openRequest }: ValidationSummaryProps) {
+export function ValidationSummary({ errors, isDirty, onSelectError }: ValidationSummaryProps) {
   const [open, setOpen] = useState(false)
   const summaryRef = useRef<HTMLDivElement>(null)
-  useEffect(() => { if (openRequest) setOpen(true) }, [openRequest])
   useClickOutside(summaryRef, () => setOpen(false), open)
   const { errors: blockingErrors, warnings } = groupValidationErrors(errors)
   const hasIssues = blockingErrors.length > 0 || warnings.length > 0

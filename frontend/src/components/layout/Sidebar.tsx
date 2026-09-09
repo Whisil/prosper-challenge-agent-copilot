@@ -19,8 +19,8 @@ export function Sidebar({ workspace, onWorkspaceChange }: SidebarProps) {
 
   return (
     <aside className={cn("flex shrink-0 flex-col border-r border-[#e5e8e4] bg-[#fbfcfa] py-4 transition-[width,padding]", collapsed ? "w-[72px] px-2" : "w-[224px] px-3")}>
-      <div className={cn("relative flex items-center pb-8", collapsed ? "justify-center" : "justify-between gap-2 px-3")}>
-        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#1f3028] text-white">
+      <div className={cn("relative flex h-12 items-center pb-8", collapsed ? "justify-center" : "justify-between gap-2 px-3")}>
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#1f3028] text-white">
           <Sparkles size={16} />
         </div>
         {!collapsed && <div>

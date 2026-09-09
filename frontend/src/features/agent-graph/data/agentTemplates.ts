@@ -21,6 +21,30 @@ const intakeAgent: AgentConfig = {
   ],
 }
 
+export const reviewExampleAgent: AgentConfig = {
+  name: "Prosper Review Example",
+  voice_id: exampleAgent.voice_id,
+  model: exampleAgent.model,
+  persona: "You are a concise scheduling assistant. Keep replies short.",
+  initial_node: "caller_request",
+  nodes: [
+    {
+      id: "caller_request", name: "caller_request", title: "Caller Request", type: "conversation",
+      task_messages: [{ role: "developer", content: "Ask what the caller needs and route booking requests forward." }],
+      edges: [{ id: "request_to_availability", function: "book_appointment", description: "Use when the caller wants to book an appointment.", target: "share_availability", properties: {}, required: [], kind: "condition" }],
+    },
+    {
+      id: "share_availability", name: "share_availability", title: "Share Availability", type: "conversation",
+      task_messages: [{ role: "developer", content: "Offer two short appointment options." }],
+      edges: [{ id: "availability_to_complete", function: "finish_booking", description: "Use after the caller chooses an appointment.", target: "booking_complete", properties: {}, required: [], kind: "condition" }],
+    },
+    {
+      id: "booking_complete", name: "booking_complete", title: "Booking Complete", type: "end", end: true,
+      task_messages: [{ role: "developer", content: "Confirm the booking and thank the caller." }], edges: [],
+    },
+  ],
+}
+
 export const showcaseAgent: AgentConfig = {
   name: "Prosper Flow Test Agent",
   voice_id: exampleAgent.voice_id,

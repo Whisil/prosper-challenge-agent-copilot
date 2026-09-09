@@ -12,8 +12,8 @@ export interface TraceSummary {
 export const sampleCall: CallRecord = {
   id: "sample-availability-before-verification",
   title: "Sample call · availability shown too early",
-  agentName: "Prosper Flow Test Agent",
-  draftVersion: "prosper_flow_test_agent-v1",
+  agentName: "Prosper Review Example",
+  draftVersion: "prosper_review_example-v1",
   status: "completed",
   startedAt: "2026-01-01T10:00:00.000Z",
   endedAt: "2026-01-01T10:01:00.000Z",
@@ -74,7 +74,8 @@ export function completedFromTerminalEvidence(session: TestSession): TestSession
 
 function mergeSampleCall(records: CallRecord[]): CallRecord[] {
   const existingSample = records.find((record) => record.id === sampleCall.id)
-  return [{ ...sampleCall, ...existingSample, isSample: true }, ...records.filter((record) => record.id !== sampleCall.id && record.id !== "demo-premature-disclosure" && record.id !== "demo-human-request")]
+  const resolution = existingSample?.review?.resolution
+  return [{ ...sampleCall, isSample: true, ...(resolution ? { review: { ...sampleCall.review, resolution } } : {}) }, ...records.filter((record) => record.id !== sampleCall.id && record.id !== "demo-premature-disclosure" && record.id !== "demo-human-request")]
 }
 
 function parse(value: string | null): CallRecord[] {
@@ -119,6 +120,14 @@ export function upsertCallRecord(record: CallRecord): CallRecord[] {
 
 export function updateCallReview(id: string, review: CallReview): CallRecord[] {
   const next = loadCallHistory().map((record) => record.id === id ? { ...record, review, reviewState: "complete" as const } : record)
+  saveCallHistory(next)
+  return next
+}
+
+export function resolveCallReview(id: string): CallRecord[] {
+  const next = loadCallHistory().map((record) => record.id === id && record.review
+    ? { ...record, review: { ...record.review, resolution: "resolved" as const }, reviewState: "complete" as const }
+    : record)
   saveCallHistory(next)
   return next
 }
