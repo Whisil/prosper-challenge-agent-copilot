@@ -16,6 +16,19 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return payload as T
 }
 
+async function requestWithTimeout<T>(path: string, timeoutMs: number, init?: RequestInit): Promise<T> {
+  const controller = new AbortController()
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    return await request<T>(path, { ...init, signal: controller.signal })
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error("The AI review took too long. Confirm the backend and OpenAI settings, then retry.")
+    throw error
+  } finally {
+    window.clearTimeout(timeout)
+  }
+}
+
 export function checkAgentApi() {
   return request<{ status: string }>("/api/health")
 }
@@ -32,10 +45,14 @@ export function getTestSession(sessionId: string) {
   return request<TestSession>(`/api/test-sessions/${sessionId}`)
 }
 
+export function completeTestSession(sessionId: string) {
+  return request<TestSession>(`/api/test-sessions/${sessionId}/complete`, { method: "POST" })
+}
+
 export function createCopilotProposal(payload: CopilotProposalRequest) {
   return request<ChangeProposal>("/api/copilot/propose", { method: "POST", body: JSON.stringify(payload) })
 }
 
 export function reviewCall(payload: ReviewCallRequest) {
-  return request<CallReview>("/api/copilot/review-call", { method: "POST", body: JSON.stringify(payload) })
+  return requestWithTimeout<CallReview>("/api/copilot/review-call", 20_000, { method: "POST", body: JSON.stringify(payload) })
 }

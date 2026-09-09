@@ -50,4 +50,12 @@ describe("toFlowElements", () => {
     expect(nodes.find((node) => node.id === "offer_times")?.data.validationErrors).toHaveLength(1)
     expect(nodes.find((node) => node.id === "greeting")?.data.validationErrors).toHaveLength(0)
   })
+
+  it("preserves the selected source and target sides for connections", () => {
+    const { edges, nodes } = toFlowElements(exampleAgent, undefined, [], { "greeting-choose_intent-1": { source: "right", target: "top" } })
+
+    expect(edges[0]).toMatchObject({ sourceHandle: "connection-right", targetHandle: "target-top" })
+    expect(nodes.find((node) => node.id === "greeting")?.data.connectedSourceHandleIds).toContain("connection-right")
+    expect(nodes.find((node) => node.id === "collect_details")?.data.connectedTargetHandleIds).toContain("target-top")
+  })
 })

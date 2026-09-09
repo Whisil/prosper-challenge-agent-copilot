@@ -85,13 +85,13 @@ describe("agent operations", () => {
     let draft = draftWithExample()
     draft = applyAgentAction(draft, {
       type: "add_edge",
-      source: "confirm",
+      source: "greeting",
       edge: { function: "restart", description: "Restart", target: "greeting", properties: {}, required: [] },
     })
-    draft = applyAgentAction(draft, { type: "update_edge", source: "confirm", functionName: "restart", patch: { description: "Start over" } })
-    expect(draft.config.nodes.find((node) => node.name === "confirm")?.edges[0].description).toBe("Start over")
+    draft = applyAgentAction(draft, { type: "update_edge", source: "greeting", functionName: "restart", patch: { description: "Start over" } })
+    expect(draft.config.nodes.find((node) => node.name === "greeting")?.edges.find((edge) => edge.function === "restart")?.description).toBe("Start over")
 
-    draft = applyAgentAction(draft, { type: "delete_edge", source: "confirm", functionName: "restart" })
+    draft = applyAgentAction(draft, { type: "delete_edge", source: "greeting", functionName: "restart" })
     draft = applyAgentAction(draft, { type: "move_node", nodeName: "confirm", position: { x: 500, y: 900 } })
     expect(draft.config.nodes.find((node) => node.name === "confirm")?.edges).toHaveLength(0)
     expect(draft.layout.confirm).toEqual({ x: 500, y: 900 })
@@ -106,6 +106,18 @@ describe("agent operations", () => {
     })
 
     expect(draft.config.nodes[0].edges[0]).toMatchObject({ function: "choose_intent", target: "confirm" })
+  })
+
+  it("stores connection handle sides separately from runtime edge data", () => {
+    const draft = applyAgentAction(draftWithExample(), {
+      type: "add_edge",
+      source: "greeting",
+      edge: { id: "greeting-extra-confirm", function: "extra", description: "Use this route.", target: "confirm", properties: {}, required: [] },
+      handles: { source: "right", target: "top" },
+    })
+
+    expect(draft.edgeHandles["greeting-extra-confirm"]).toEqual({ source: "right", target: "top" })
+    expect(draft.config.nodes.find((node) => node.name === "greeting")?.edges.at(-1)).not.toHaveProperty("source")
   })
 
   it("creates unique canvas transitions and rejects terminal or self connections", () => {

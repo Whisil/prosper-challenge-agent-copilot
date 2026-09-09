@@ -51,5 +51,21 @@ def test_end_nodes_cannot_have_edges():
     document = load_example()
     document["nodes"][-1]["edges"] = [{"function": "restart", "description": "Restart", "target": "greeting"}]
 
-    with pytest.raises(ValueError, match="End node"):
+    with pytest.raises(ValueError, match="Terminal node"):
+        AgentBuilder.from_dict(document)
+
+
+def test_transfer_nodes_are_terminal_and_branch_nodes_are_not_supported():
+    document = load_example()
+    document["nodes"][0]["type"] = "branch"
+    document["nodes"][0]["branch"] = {"expression": "caller wants help"}
+    with pytest.raises(ValueError, match="unsupported type"):
+        AgentBuilder.from_dict(document)
+
+    document = load_example()
+    document["nodes"][-1]["type"] = "transfer"
+    document["nodes"][-1]["end"] = True
+    document["nodes"][-1]["transfer"] = {"reason": "Caller requested staff"}
+    document["nodes"][-1]["edges"] = [{"function": "bad", "description": "Bad", "target": "greeting"}]
+    with pytest.raises(ValueError, match="Terminal node"):
         AgentBuilder.from_dict(document)

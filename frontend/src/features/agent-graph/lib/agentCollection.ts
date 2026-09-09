@@ -1,9 +1,9 @@
 import type { AgentCollection, AgentConfig, AgentDraft, StoredAgent } from "../model/type"
 import { createAgentDraft } from "./agentOperations"
 import { loadStoredDraft } from "./draftPersistence"
+import { defaultEdgeHandleLayout, edgeHandleKey } from "./agentDocument"
 
 export const AGENT_COLLECTION_STORAGE_KEY = "prosper-agent-collection-v1"
-
 function now() {
   return new Date().toISOString()
 }
@@ -24,6 +24,16 @@ export function createAgentCollection(config: AgentConfig): AgentCollection {
   return { activeAgentId: agent.id, agents: [agent] }
 }
 
+function migrateStoredDraft(draft: AgentDraft): AgentDraft {
+  const normalized = createAgentDraft(draft.config)
+  normalized.config.id = draft.config.id
+  normalized.config.revision = draft.config.revision
+  normalized.config.version = draft.config.version
+  normalized.layout = Object.fromEntries(normalized.config.nodes.map((node) => [node.name, draft.layout[node.name] ?? normalized.layout[node.name]]))
+  normalized.edgeHandles = { ...normalized.edgeHandles, ...Object.fromEntries(Object.entries(draft.edgeHandles ?? {}).filter(([key]) => key in normalized.edgeHandles)) }
+  return normalized
+}
+
 function isDraft(value: unknown): value is AgentDraft {
   return Boolean(value && typeof value === "object" && "config" in value && "layout" in value)
 }
@@ -37,7 +47,12 @@ function parseCollection(value: unknown): AgentCollection | undefined {
   const candidate = value as Partial<AgentCollection>
   if (!Array.isArray(candidate.agents) || !candidate.agents.every(isStoredAgent)) return undefined
   if (typeof candidate.activeAgentId !== "string" || !candidate.agents.some((agent) => agent.id === candidate.activeAgentId)) return undefined
-  return candidate as AgentCollection
+  const collection = candidate as AgentCollection
+  collection.agents = collection.agents.map((agent) => ({
+    ...agent,
+    draft: migrateStoredDraft(agent.draft),
+  }))
+  return collection
 }
 
 export function loadAgentCollection(): AgentCollection | undefined {
@@ -46,7 +61,14 @@ export function loadAgentCollection(): AgentCollection | undefined {
   if (raw) {
     try {
       const parsed = parseCollection(JSON.parse(raw))
-      if (parsed) return parsed
+      if (parsed) {
+        if (!parsed.agents.length) {
+          return undefined
+        }
+        if (!parsed.agents.some((agent) => agent.id === parsed.activeAgentId)) parsed.activeAgentId = parsed.agents[0]?.id ?? ""
+        saveAgentCollection(parsed)
+        return parsed
+      }
     } catch {
       window.localStorage.removeItem(AGENT_COLLECTION_STORAGE_KEY)
     }
@@ -55,7 +77,8 @@ export function loadAgentCollection(): AgentCollection | undefined {
   if (!legacyDraft) return undefined
   const id = legacyDraft.config.id || createAgentId()
   legacyDraft.config.id = id
-  const collection = { activeAgentId: id, agents: [{ id, draft: legacyDraft, updatedAt: now() }] }
+  const edgeHandles = legacyDraft.edgeHandles ?? Object.fromEntries(legacyDraft.config.nodes.flatMap((node) => node.edges.map((edge, index) => [edgeHandleKey(node.name, edge, index), defaultEdgeHandleLayout()])))
+  const collection = { activeAgentId: id, agents: [{ id, draft: { ...legacyDraft, edgeHandles }, updatedAt: now() }] }
   saveAgentCollection(collection)
   return collection
 }

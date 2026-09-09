@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useReducer, useState } from "react"
-import { exampleAgent } from "../data/exampleAgent"
+import { showcaseAgent } from "../data/agentTemplates"
 import { createAgentDraft, createCanvasTransition } from "../lib/agentOperations"
 import { createDraftHistory, reduceDraftHistory } from "../lib/history"
 import { loadStoredSnapshots, saveStoredDraft } from "../lib/draftPersistence"
 import { createAgentCollection, createStoredAgent, loadAgentCollection, saveAgentCollection, updateStoredAgent } from "../lib/agentCollection"
 import { validateAgentConfig } from "../lib/validateAgent"
-import type { AgentCollection, AgentConfig, AgentEdge, AgentEditorAction, AgentNode, ConnectionInteractionState, NodeCreationInput, NodeCreationKind, TransitionReference } from "../model/type"
+import type { AgentCollection, AgentConfig, AgentEdge, AgentEditorAction, AgentNode, ConnectionInteractionState, EdgeHandleLayout, NodeCreationInput, NodeCreationKind, TransitionReference } from "../model/type"
 import { defaultNodePosition } from "../lib/graphLayout"
 import { humanizeIdentifier, toIdentifier } from "../lib/identifier"
 import { applyGraphOperations } from "@/features/agent-copilot/lib/operationApplier"
@@ -13,19 +13,22 @@ import type { GraphOperation } from "@/features/agent-copilot/model/type"
 
 export function useAgentGraph() {
   const storedCollection = useMemo(() => loadAgentCollection(), [])
-  const initialCollection = useMemo<AgentCollection>(() => storedCollection ?? createAgentCollection(exampleAgent), [storedCollection])
+  const initialCollection = useMemo<AgentCollection>(() => storedCollection ?? createAgentCollection(showcaseAgent), [storedCollection])
   const initialAgent = useMemo(() => initialCollection.agents.find((agent) => agent.id === initialCollection.activeAgentId) ?? initialCollection.agents[0], [initialCollection])
   const initialDraft = initialAgent.draft
   const [history, dispatch] = useReducer(reduceDraftHistory, initialDraft, createDraftHistory)
   const draft = history.present
   const [agents, setAgents] = useState(initialCollection.agents)
   const [activeAgentId, setActiveAgentId] = useState(initialCollection.activeAgentId)
-  const [hasPersistentCollection, setHasPersistentCollection] = useState(Boolean(storedCollection))
+  const [hasPersistentCollection, setHasPersistentCollection] = useState(true)
   const [savedDraft, setSavedDraft] = useState(initialDraft)
   const [snapshots, setSnapshots] = useState(() => loadStoredSnapshots())
   const [selectedNodeName, setSelectedNodeName] = useState<string | undefined>(initialDraft.config.initial_node)
   const [selectedTransition, setSelectedTransition] = useState<TransitionReference>()
   const [connectionInteraction, setConnectionInteraction] = useState<ConnectionInteractionState>({ mode: "idle" })
+  useEffect(() => {
+    if (!storedCollection) saveAgentCollection(initialCollection)
+  }, [initialCollection, storedCollection])
   const selectedNode = useMemo(
     () => (selectedNodeName ? draft.config.nodes.find((node) => node.name === selectedNodeName) : undefined),
     [draft.config.nodes, selectedNodeName],
@@ -54,12 +57,11 @@ export function useAgentGraph() {
       id: nodeId,
       title: input.title ?? humanizeIdentifier(input.name),
       type: kind,
-      task_messages: [{ role: "developer", content: input.instruction.trim() }],
-      role_message: input.roleMessage?.trim() || null,
+      task_messages: [{ role: "developer", content: (input.instruction ?? (kind === "transfer" ? `Hand off the caller. Reason: ${input.transfer?.reason ?? ""}. Context: ${input.transfer?.context ?? ""}` : "")).trim() }],
+      role_message: kind === "transfer" ? null : input.roleMessage?.trim() || null,
       edges: [],
-      end: kind === "end",
+      end: kind === "end" || kind === "transfer",
       ...(kind === "tool" ? { tool: input.tool ?? { name: nodeId, description: "", confirmationRequired: false } } : {}),
-      ...(kind === "branch" ? { branch: input.branch ?? { expression: "" } } : {}),
       ...(kind === "transfer" ? { transfer: input.transfer ?? { reason: "", context: "" } } : {}),
     }
     const position = defaultNodePosition(draft.config.nodes.length)
@@ -94,12 +96,12 @@ export function useAgentGraph() {
     apply({ type: "delete_edge", source, functionName })
     if (selectedTransition?.source === source && selectedTransition.functionName === functionName) setSelectedTransition(undefined)
   }, [apply, selectedTransition])
-  const createTransition = useCallback((source: string, target: string) => {
+  const createTransition = useCallback((source: string, target: string, handles: EdgeHandleLayout) => {
     const sourceNode = draft.config.nodes.find((node) => node.name === source)
     const targetNode = draft.config.nodes.find((node) => node.name === target)
     const edge = createCanvasTransition(sourceNode, targetNode)
     if (!edge) return
-    apply({ type: "add_edge", source, edge })
+    apply({ type: "add_edge", source, edge, handles })
     const transition = { source, functionName: edge.function }
     setSelectedNodeName(source)
     setSelectedTransition(transition)
@@ -121,7 +123,7 @@ export function useAgentGraph() {
     return nextCollection
   }, [activeAgentId, agents])
   const resetDraft = useCallback(() => {
-    const factoryDraft = createAgentDraft(exampleAgent)
+    const factoryDraft = createAgentDraft(showcaseAgent)
     factoryDraft.config.id = activeAgentId
     dispatch({ type: "replace", draft: factoryDraft })
     setSavedDraft(factoryDraft)
@@ -180,7 +182,7 @@ export function useAgentGraph() {
   const applyCopilotOperations = useCallback((operations: GraphOperation[], acceptedIndices?: number[]) => {
     const preview = applyGraphOperations(draft, operations, acceptedIndices)
     if (preview.errors.some((error) => error.severity === "error")) return preview
-    dispatch({ type: "replace", draft: { config: preview.document, layout: preview.layout } })
+    dispatch({ type: "replace", draft: { config: preview.document, layout: preview.layout, edgeHandles: draft.edgeHandles } })
     return preview
   }, [draft])
 

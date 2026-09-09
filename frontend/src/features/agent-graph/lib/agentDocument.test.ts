@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { exampleAgent } from "../data/exampleAgent"
 import { documentToDraft, documentToRuntimeConfig, parseAgentDocument, runtimeConfigToDocument } from "./agentDocument"
+import type { AgentConfig } from "../model/type"
 
 describe("agent document adapters", () => {
   it("migrates the legacy runtime contract into a versioned document", () => {
@@ -37,5 +38,16 @@ describe("agent document adapters", () => {
     const draft = documentToDraft(document)
     expect(draft.config.nodes.map((node) => node.id)).toContain("extra")
     expect(draft.layout.extra).toEqual({ x: 230, y: 1560 })
+  })
+
+  it("removes legacy branch nodes and normalizes their graph metadata", () => {
+    const migrated = runtimeConfigToDocument({ ...exampleAgent, initial_node: "legacy_branch", nodes: [
+      { name: "legacy_branch", type: "branch" as never, branch: { expression: "caller wants help" } as never, task_messages: [{ role: "developer", content: "route" }], edges: [{ function: "old", description: "old", target: "greeting", kind: "default" as never, condition: "x" as never, properties: {}, required: [] }] },
+      { ...exampleAgent.nodes[0], edges: [] },
+    ] } as unknown as AgentConfig)
+
+    expect(migrated.nodes.map((node) => node.name)).toEqual(["greeting"])
+    expect(migrated.initial_node).toBe("greeting")
+    expect(migrated.nodes[0].edges).toHaveLength(0)
   })
 })

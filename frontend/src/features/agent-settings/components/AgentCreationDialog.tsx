@@ -15,7 +15,7 @@ interface AgentCreationDialogProps {
 }
 
 export function AgentCreationDialog({ open, initialSetup = false, onOpenChange, onCreate }: AgentCreationDialogProps) {
-  const [templateId, setTemplateId] = useState<"scheduler" | "intake" | "blank">("scheduler")
+  const [templateId, setTemplateId] = useState<"scheduler" | "intake" | "test" | "blank">("scheduler")
   const [name, setName] = useState("Clinic Scheduler")
   const [persona, setPersona] = useState("")
   const [submitted, setSubmitted] = useState(false)

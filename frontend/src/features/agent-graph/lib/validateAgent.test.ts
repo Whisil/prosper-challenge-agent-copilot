@@ -123,4 +123,15 @@ describe("validateAgentConfig", () => {
     expect(errors.some((error) => error.path.endsWith(".id"))).toBe(true)
     expect(errors.some((error) => error.message.includes("cycle"))).toBe(true)
   })
+
+  it("treats transfers as terminal nodes", () => {
+    const config = configWith({
+      nodes: [
+        { ...exampleAgent.nodes[0], edges: [{ ...exampleAgent.nodes[0].edges[0], target: "handoff", kind: "condition", description: "Human request route." }] },
+        { name: "handoff", id: "handoff", title: "Handoff", type: "transfer", end: true, task_messages: [{ role: "developer", content: "Internal handoff instruction." }], transfer: { reason: "Caller asked for staff." }, edges: [] },
+      ],
+      initial_node: "greeting",
+    })
+    expect(validateAgentConfig(config).filter((error) => error.severity === "error")).toEqual([])
+  })
 })

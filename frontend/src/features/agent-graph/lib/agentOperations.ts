@@ -1,5 +1,5 @@
 import type { AgentConfig, AgentDraft, AgentEdge, AgentEditorAction, AgentNode, AgentProperty, NodeCreationKind } from "../model/type"
-import { documentLayout, runtimeConfigToDocument } from "./agentDocument"
+import { defaultEdgeHandleLayout, documentToDraft, edgeHandleKey, runtimeConfigToDocument } from "./agentDocument"
 import { humanizeIdentifier, toIdentifier } from "./identifier"
 
 function cloneNode(node: AgentNode): AgentNode {
@@ -10,6 +10,7 @@ function cloneNode(node: AgentNode): AgentNode {
     name: id,
     title: node.title ?? humanizeIdentifier(node.name),
     type: node.type ?? (node.end ? "end" : "conversation"),
+    end: node.type === "transfer" || node.type === "end" ? true : node.end,
     task_messages: node.task_messages.map((message) => ({ ...message })),
     edges: node.edges.map((edge, index) => ({
       ...edge,
@@ -29,11 +30,7 @@ export function cloneAgentConfig(config: AgentConfig): AgentConfig {
 }
 
 export function createAgentDraft(config: AgentConfig): AgentDraft {
-  const document = runtimeConfigToDocument(config)
-  return {
-    config: document,
-    layout: documentLayout(document),
-  }
+  return documentToDraft(runtimeConfigToDocument(config))
 }
 
 export function getNextNodeName(nodes: AgentNode[], kind: NodeCreationKind) {
@@ -60,8 +57,8 @@ export function getNextTransitionName(edges: AgentEdge[]) {
 }
 
 export function createCanvasTransition(source: AgentNode | undefined, target: AgentNode | undefined): AgentEdge | undefined {
-  if (!source || !target || source.end || source.name === target.name) return undefined
-  return { function: getNextTransitionName(source.edges), description: "", target: target.name, properties: {}, required: [] }
+  if (!source || !target || source.end || source.type === "end" || source.type === "transfer" || source.name === target.name) return undefined
+  return { id: `${source.name}-${getNextTransitionName(source.edges)}-${target.name}`, kind: "condition", function: getNextTransitionName(source.edges), description: "", target: target.name, properties: {}, required: [] }
 }
 
 export function createDefaultAgentProperty(): AgentProperty {
@@ -112,9 +109,11 @@ export function applyAgentAction(draft: AgentDraft, action: AgentEditorAction): 
       return {
         config: { ...draft.config, nodes: [...draft.config.nodes, cloneNode(action.node)] },
         layout: { ...draft.layout, [action.node.name]: action.position },
+        edgeHandles: draft.edgeHandles ?? {},
       }
-    case "delete_node":
+    case "delete_node": {
       if (draft.config.initial_node === action.nodeName || !draft.config.nodes.some((node) => node.name === action.nodeName)) return draft
+      const removedEdgeKeys = draft.config.nodes.flatMap((node) => node.edges.filter((edge) => edge.target === action.nodeName).map((edge, index) => edgeHandleKey(node.name, edge, index)))
       return {
         config: {
           ...draft.config,
@@ -123,19 +122,22 @@ export function applyAgentAction(draft: AgentDraft, action: AgentEditorAction): 
             .map((node) => ({ ...node, edges: node.edges.filter((edge) => edge.target !== action.nodeName) })),
         },
         layout: Object.fromEntries(Object.entries(draft.layout).filter(([name]) => name !== action.nodeName)),
+        edgeHandles: Object.fromEntries(Object.entries(draft.edgeHandles ?? {}).filter(([key]) => !key.startsWith(`${action.nodeName}-`) && !removedEdgeKeys.includes(key))),
       }
+    }
     case "set_initial_node":
       if (!draft.config.nodes.some((node) => node.name === action.nodeName)) return draft
       return { ...draft, config: { ...draft.config, initial_node: action.nodeName } }
     case "add_edge": {
       const source = draft.config.nodes.find((node) => node.name === action.source)
-      if (!source || source.edges.some((edge) => edge.function === action.edge.function)) return draft
+      if (!source || source.end || source.type === "end" || source.type === "transfer" || source.edges.some((edge) => edge.function === action.edge.function)) return draft
       return {
         ...draft,
         config: {
           ...draft.config,
           nodes: draft.config.nodes.map((node) => node.name === action.source ? { ...node, edges: [...node.edges, { ...action.edge }] } : node),
         },
+        edgeHandles: { ...(draft.edgeHandles ?? {}), [edgeHandleKey(action.source, action.edge)]: action.handles ?? defaultEdgeHandleLayout() },
       }
     }
     case "update_edge":
@@ -149,7 +151,10 @@ export function applyAgentAction(draft: AgentDraft, action: AgentEditorAction): 
           }),
         },
       }
-    case "delete_edge":
+    case "delete_edge": {
+      const sourceNode = draft.config.nodes.find((node) => node.name === action.source)
+      const edge = sourceNode?.edges.find((candidate) => candidate.function === action.functionName)
+      const key = edge ? edgeHandleKey(action.source, edge) : undefined
       return {
         ...draft,
         config: {
@@ -159,7 +164,9 @@ export function applyAgentAction(draft: AgentDraft, action: AgentEditorAction): 
             edges: node.edges.filter((edge) => edge.function !== action.functionName),
           }),
         },
+        edgeHandles: key ? Object.fromEntries(Object.entries(draft.edgeHandles ?? {}).filter(([edgeKey]) => edgeKey !== key)) : (draft.edgeHandles ?? {}),
       }
+    }
     case "move_node":
       return { ...draft, layout: { ...draft.layout, [action.nodeName]: action.position } }
   }

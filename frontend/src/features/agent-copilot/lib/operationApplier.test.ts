@@ -27,6 +27,38 @@ describe("operationApplier", () => {
     expect(applyGraphOperation(draft, { op: "update_edge", edgeId: "missing", patch: { target: "greeting" } }).errors).toHaveLength(1)
   })
 
+  it("accepts complete outgoing edges on an added node", () => {
+    const draft = createAgentDraft(document)
+    const proposed = node("verify_identity")
+    proposed.edges = [{ id: "identity_to_availability", function: "continue_booking", description: "Use after verification.", target: "offer_times", properties: {}, required: [], kind: "condition" }]
+
+    const result = applyGraphOperation(draft, { op: "add_node", node: proposed })
+    expect(result.errors).toHaveLength(0)
+    expect(result.draft?.config.nodes.find((candidate) => candidate.id === "verify_identity")?.edges[0]?.id).toBe("identity_to_availability")
+  })
+
+  it("rejects the same edge when it is nested and added again", () => {
+    const draft = createAgentDraft(document)
+    const proposed = node("verify_identity")
+    proposed.edges = [{ id: "identity_to_offer_times", function: "continue_booking", description: "Use after verification.", target: "offer_times", properties: {}, required: [], kind: "condition" }]
+    const result = applyGraphOperations(draft, [
+      { op: "add_node", node: proposed },
+      { op: "add_edge", sourceNodeId: "verify_identity", edge: proposed.edges[0] },
+    ])
+    expect(result.errors.some((error) => error.message.includes("already exists"))).toBe(true)
+  })
+
+  it("inserts a node with one explicit add_edge operation", () => {
+    const draft = createAgentDraft(document)
+    const result = applyGraphOperations(draft, [
+      { op: "add_node", node: node("verify_identity") },
+      { op: "add_edge", sourceNodeId: "verify_identity", edge: { id: "identity_to_offer_times", function: "continue_after_verification", description: "Use after verification.", target: "offer_times", properties: {}, required: [], kind: "condition" } },
+    ])
+
+    expect(result.errors.filter((error) => error.severity === "error")).toHaveLength(0)
+    expect(result.document.nodes.find((candidate) => candidate.id === "verify_identity")?.edges[0]?.id).toBe("identity_to_offer_times")
+  })
+
   it("supports selective operation approval", () => {
     const draft = createAgentDraft(document)
     const result = applyGraphOperations(draft, [{ op: "update_agent", patch: { persona: "one" } }, { op: "update_agent", patch: { persona: "two" } }], [1])

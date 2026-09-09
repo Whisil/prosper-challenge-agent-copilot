@@ -111,15 +111,17 @@ async def run_bot(
     async def on_client_connected(transport, client):
         session_id = client_session_id(client)
         preview_document = get_test_session_document(session_id)
-        active_builder = AgentBuilder.from_dict(preview_document) if preview_document else AgentBuilder.from_json(active_flow_path(AGENT_FLOW))
+        active_builder = AgentBuilder(AgentBuilder.from_dict(preview_document).config, runtime_session_id=session_id) if preview_document else AgentBuilder(AgentBuilder.from_json(active_flow_path(AGENT_FLOW)).config, runtime_session_id=session_id)
         logger.info(f"Client connected — starting '{active_builder.config.name}' at initial node")
         await flow_manager.initialize(active_builder.build_initial_node())
-        mark_runtime_connected(active_builder.config.initial_node, session_id)
         initial = next((node for node in active_builder.config.nodes if node.name == active_builder.config.initial_node), None)
+        mark_runtime_connected(active_builder.config.initial_node, session_id, node_title=initial.title if initial else None, explanation=initial.task_messages[0].get("content", "") if initial and initial.task_messages and isinstance(initial.task_messages[0], dict) else None, is_terminal=bool(initial and initial.end))
         if initial and initial.type == "tool":
-            record_runtime_event("tool_call", f"Mock tool called: {initial.tool.get('name', initial.name) if initial.tool else initial.name}.", session_id=session_id, node_id=initial.id or initial.name, mock=True)
+            record_runtime_event("tool_call", f"The mock action {initial.tool.get('name', initial.name) if initial.tool else initial.name} ran.", session_id=session_id, node_id=initial.id or initial.name, nodeTitle=initial.title or initial.name, toolName=initial.tool.get('name', initial.name) if initial.tool else initial.name, mock=True)
         if initial and initial.type == "transfer":
-            record_runtime_event("handoff", f"Mock handoff: {initial.transfer.get('reason', 'Transfer requested.') if initial.transfer else 'Transfer requested.'}", session_id=session_id, node_id=initial.id or initial.name, mock=True)
+            record_runtime_event("handoff", f"The caller was handed to staff: {initial.transfer.get('reason', 'Transfer requested.') if initial.transfer else 'Transfer requested.'}", session_id=session_id, node_id=initial.id or initial.name, nodeTitle=initial.title or initial.name, reason=initial.transfer.get('reason') if initial.transfer else None, mock=True)
+        if initial and initial.end:
+            mark_runtime_completed(session_id, f"The workflow reached {initial.title or initial.name}.", initial.id or initial.name, initial.title or initial.name)
 
     @transport.event_handler("on_client_disconnected")
     async def on_client_disconnected(transport, client):

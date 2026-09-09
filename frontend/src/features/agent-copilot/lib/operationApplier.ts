@@ -1,5 +1,6 @@
 import { validateAgentConfig } from "@/features/agent-graph/lib/validateAgent"
 import type { AgentDraft, AgentDocument, AgentEdge, AgentNode, AgentValidationError } from "@/features/agent-graph/model/type"
+import { defaultEdgeHandleLayout, edgeHandleKey } from "@/features/agent-graph/lib/agentDocument"
 import type { GraphOperation, OperationPreview, OperationResult } from "../model/type"
 
 function cloneDocument(document: AgentDocument): AgentDocument {
@@ -7,7 +8,7 @@ function cloneDocument(document: AgentDocument): AgentDocument {
 }
 
 function cloneDraft(draft: AgentDraft): AgentDraft {
-  return { config: cloneDocument(draft.config), layout: JSON.parse(JSON.stringify(draft.layout)) as AgentDraft["layout"] }
+  return { config: cloneDocument(draft.config), layout: JSON.parse(JSON.stringify(draft.layout)) as AgentDraft["layout"], edgeHandles: JSON.parse(JSON.stringify(draft.edgeHandles ?? {})) as AgentDraft["edgeHandles"] }
 }
 
 function operationError(message: string, path = "proposal.operation"): AgentValidationError {
@@ -51,7 +52,7 @@ export function validateGraphOperation(document: AgentDocument, operation: Graph
       const source = nodeById(document, operation.sourceNodeId)
       const target = nodeByName(document, operation.edge.target)
       if (!source) return [operationError(`Source node '${operation.sourceNodeId}' does not exist.`)]
-      if (source.end || source.type === "end") return [operationError("End nodes cannot be transition sources.")]
+      if (source.end || source.type === "end" || source.type === "transfer") return [operationError("Terminal nodes cannot be transition sources.")]
       if (!target) return [operationError(`Target node '${operation.edge.target}' does not exist.`)]
       if (!operation.edge.id?.trim()) return [operationError("A proposed edge needs a stable ID.")]
       if (operation.edge.id && edgeLocation(document, operation.edge.id)) return [operationError(`Edge ID '${operation.edge.id}' already exists.`)]
@@ -100,6 +101,7 @@ export function applyGraphOperation(draft: AgentDraft, operation: GraphOperation
     case "add_edge": {
       const source = nodeById(next.config, operation.sourceNodeId)
       if (source) source.edges.push(JSON.parse(JSON.stringify(operation.edge)) as AgentEdge)
+      if (source) next.edgeHandles[edgeHandleKey(source.name, operation.edge)] = defaultEdgeHandleLayout()
       break
     }
     case "update_edge": {

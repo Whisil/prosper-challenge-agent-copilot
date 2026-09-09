@@ -34,7 +34,9 @@ Start the frontend in another:
 make frontend-dev
 ```
 
-Open [http://localhost:5173](http://localhost:5173) to use the agent workspace. The builder supports template or blank-agent onboarding, multi-agent browser-local storage, typed nodes, local draft versions, validation, and a draft-aware **Test call**. **Call history** stores local traces and automatic AI reviews, while the feedback-driven Evidence-to-Flow Copilot turns a review or guideline into a constrained stable-ID proposal with an optional preview call. Initial AI graph creation is intentionally disabled until the manual builder is stable. `Ctrl+C` stops either process. Run `make help` to list all targets.
+Open [http://localhost:5173](http://localhost:5173) to use the agent workspace. On a fresh browser the builder starts with one **Prosper Flow Test Agent** showcase graph containing conversations, tools, ordinary transitions, handoffs, terminal outcomes, warnings, and errors. **Call history** starts with one sample call that demonstrates a reviewable safety gap. The builder also supports template or blank-agent onboarding, browser-local multi-agent storage, four-sided connections, local draft versions, validation, and draft-aware **Test call** execution.
+
+The reliable demo path is the editable graph, Test call, Call history, and post-call AI review. AI-generated suggested graph fixes are still under development and were dropped from the final test-task demo scope; the current proposal infrastructure remains available for continued development but is not presented as a finished workflow. `Ctrl+C` stops either process. Run `make help` to list all targets.
 
 Prefer raw commands? Use:
 
@@ -45,7 +47,7 @@ pnpm --dir frontend install
 pnpm --dir frontend dev
 ```
 
-Remember to update `backend/.env` with API keys. See [`docs/development.md`](docs/development.md) for environment variables and troubleshooting.
+Remember to update `backend/.env` with `OPENAI_API_KEY`, `OPENAI_MODEL`, and the voice-service key. `OPENAI_MODEL` is the single backend-only model setting for call review and Copilot proposals; the frontend does not configure it. See [`docs/development.md`](docs/development.md) for environment variables and troubleshooting.
 
 ## Layout
 

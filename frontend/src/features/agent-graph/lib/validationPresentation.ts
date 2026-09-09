@@ -13,7 +13,6 @@ const fieldLabels: Record<string, string> = {
   id: "Stable ID",
   tool: "Tool setup",
   confirmationRequired: "Confirmation",
-  branch: "Branch rule",
   transfer: "Handoff reason",
   exit: "Exit path",
   initial_node: "Entry point",

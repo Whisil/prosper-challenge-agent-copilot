@@ -39,7 +39,7 @@ export function validateAgentConfig(config: AgentConfig): AgentValidationError[]
       errors.push({ path: `${nodePath}.type`, message: "Choose a supported node type.", severity: "error", location: { nodeName: node.name, field: "type" } })
     }
 
-    if (!node.task_messages[0]?.content.trim()) {
+    if (nodeType !== "transfer" && !node.task_messages[0]?.content.trim()) {
       errors.push({ path: `${nodePath}.task_messages`, message: "Add an instruction for this node.", severity: "error", location: { nodeName: node.name, field: "task_messages" } })
     }
 
@@ -47,17 +47,17 @@ export function validateAgentConfig(config: AgentConfig): AgentValidationError[]
       errors.push({ path: `${nodePath}.edges`, message: "This non-terminal node has no outgoing transition.", severity: "warning", location: { nodeName: node.name, field: "edges" } })
     }
 
-    if (nodeType === "end" && node.edges.length > 0) {
-      errors.push({ path: `${nodePath}.edges`, message: "End nodes cannot have outgoing transitions.", severity: "error", location: { nodeName: node.name, field: "edges" } })
+    if ((nodeType === "end" || nodeType === "transfer") && node.edges.length > 0) {
+      errors.push({ path: `${nodePath}.edges`, message: "Terminal nodes cannot have outgoing transitions.", severity: "error", location: { nodeName: node.name, field: "edges" } })
+    }
+    if ((nodeType === "end" || nodeType === "transfer") && !node.end) {
+      errors.push({ path: `${nodePath}.end`, message: "Terminal nodes must be marked as ending the call.", severity: "error", location: { nodeName: node.name, field: "end" } })
     }
     if (nodeType === "tool" && (!node.tool || typeof node.tool.name !== "string" || typeof node.tool.description !== "string" || !node.tool.name.trim() || !node.tool.description.trim())) {
       errors.push({ path: `${nodePath}.tool`, message: "Tool nodes need a name and description.", severity: "error", location: { nodeName: node.name, field: "tool" } })
     }
     if (nodeType === "tool" && node.tool?.confirmationRequired === undefined) {
       errors.push({ path: `${nodePath}.tool.confirmationRequired`, message: "Choose whether this tool requires confirmation before an action.", severity: "error", location: { nodeName: node.name, field: "confirmationRequired" } })
-    }
-    if (nodeType === "branch" && (typeof node.branch?.expression !== "string" || !node.branch.expression.trim())) {
-      errors.push({ path: `${nodePath}.branch`, message: "Branch nodes need an expression.", severity: "error", location: { nodeName: node.name, field: "branch" } })
     }
     if (nodeType === "transfer" && (typeof node.transfer?.reason !== "string" || !node.transfer.reason.trim())) {
       errors.push({ path: `${nodePath}.transfer`, message: "Transfer nodes need a handoff reason.", severity: "error", location: { nodeName: node.name, field: "transfer" } })
@@ -116,9 +116,6 @@ export function validateAgentConfig(config: AgentConfig): AgentValidationError[]
         }
       })
     })
-    if (node.edges.filter((edge) => (edge.kind ?? "condition") === "default").length > 1) {
-      errors.push({ path: `${nodePath}.edges.default`, message: "A node can have only one default fallback transition.", severity: "error", location: { nodeName: node.name, field: "edges" } })
-    }
   })
 
   if (!config.nodes.some((node) => node.name === config.initial_node)) {
@@ -156,12 +153,6 @@ export function validateAgentConfig(config: AgentConfig): AgentValidationError[]
   config.nodes.forEach((node) => {
     if (!node.end && node.edges.length > 0 && !canReachEnd(node.name)) {
       errors.push({ path: `nodes.${node.name}.exit`, message: "This node is in a cycle with no reachable end node.", severity: "error", location: { nodeName: node.name, field: "exit" } })
-    }
-  })
-
-  config.nodes.filter((node) => node.type === "branch").forEach((node) => {
-    if (!node.edges.some((edge) => (edge.kind ?? "condition") === "default")) {
-      errors.push({ path: `nodes.${node.name}.fallback`, message: "Add a default fallback transition for this branch.", severity: "warning", location: { nodeName: node.name, field: "fallback" } })
     }
   })
 

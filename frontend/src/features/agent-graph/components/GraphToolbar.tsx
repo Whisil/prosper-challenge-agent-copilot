@@ -1,4 +1,4 @@
-import { ArrowRightLeft, Flag, GitBranch, Maximize2, MessageSquareText, MousePointer2, Wrench } from "lucide-react"
+import { ArrowRightLeft, Flag, Maximize2, MessageSquareText, MousePointer2, Wrench } from "lucide-react"
 import { Button } from "@/components/ui/Button"
 import type { NodeCreationKind } from "../model/type"
 
@@ -16,7 +16,6 @@ export function GraphToolbar({ onFitView, onAddNode, readOnly = false }: GraphTo
       {!readOnly && <>
         <Button size="sm" className="h-7 gap-1 px-2 text-[11px]" variant="ghost" title="Add conversation node" onClick={() => onAddNode("conversation")}><MessageSquareText size={12} /> Conversation</Button>
         <Button size="sm" className="h-7 gap-1 px-2 text-[11px]" variant="ghost" title="Add tool node" onClick={() => onAddNode("tool")}><Wrench size={12} /> Tool</Button>
-        <Button size="sm" className="h-7 gap-1 px-2 text-[11px]" variant="ghost" title="Add branch node" onClick={() => onAddNode("branch")}><GitBranch size={12} /> Branch</Button>
         <Button size="sm" className="h-7 gap-1 px-2 text-[11px]" variant="ghost" title="Add transfer node" onClick={() => onAddNode("transfer")}><ArrowRightLeft size={12} /> Transfer</Button>
         <Button size="sm" className="h-7 gap-1 px-2 text-[11px]" variant="ghost" title="Add end node" onClick={() => onAddNode("end")}><Flag size={12} /> End</Button>
       </>}

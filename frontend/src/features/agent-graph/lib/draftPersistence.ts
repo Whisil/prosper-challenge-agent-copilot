@@ -1,20 +1,21 @@
 import type { XYPosition } from "@xyflow/react"
 import type { AgentDocument, AgentDraft } from "../model/type"
-import { documentLayout, parseAgentDocument } from "./agentDocument"
+import { defaultEdgeHandleLayout, documentLayout, edgeHandleKey, parseAgentDocument } from "./agentDocument"
 
 export const DRAFT_STORAGE_KEY = "prosper-agent-draft-v1"
 export const DRAFT_SNAPSHOTS_KEY = "prosper-agent-draft-snapshots-v1"
 
 export function serializeDraft(draft: AgentDraft): string {
-  return JSON.stringify({ config: draft.config, layout: draft.layout }, null, 2)
+  return JSON.stringify({ config: draft.config, layout: draft.layout, edgeHandles: draft.edgeHandles }, null, 2)
 }
 
 export function parseDraft(value: unknown): AgentDraft {
   if (!value || typeof value !== "object") throw new Error("Draft must be a JSON object.")
-  const candidate = value as { config?: unknown; layout?: Record<string, XYPosition> }
+  const candidate = value as { config?: unknown; layout?: Record<string, XYPosition>; edgeHandles?: AgentDraft["edgeHandles"] }
   const config = parseAgentDocument(candidate.config ?? value)
   const layout = candidate.layout && typeof candidate.layout === "object" ? candidate.layout : documentLayout(config)
-  return { config, layout }
+  const edgeHandles = candidate.edgeHandles ?? Object.fromEntries(config.nodes.flatMap((node) => node.edges.map((edge, index) => [edgeHandleKey(node.name, edge, index), defaultEdgeHandleLayout()])))
+  return { config, layout, edgeHandles }
 }
 
 export function loadStoredDraft(): AgentDraft | undefined {

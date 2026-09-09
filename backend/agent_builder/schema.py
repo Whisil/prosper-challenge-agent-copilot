@@ -27,7 +27,6 @@ class Edge:
     required: list = field(default_factory=list)
     id: Optional[str] = None
     kind: Optional[str] = None
-    condition: Optional[str] = None
 
     @classmethod
     def from_dict(cls, d: dict) -> "Edge":
@@ -39,7 +38,6 @@ class Edge:
             required=d.get("required", []),
             id=d.get("id"),
             kind=d.get("kind"),
-            condition=d.get("condition"),
         )
 
 
@@ -58,7 +56,6 @@ class Node:
     title: Optional[str] = None
     type: Optional[str] = None
     tool: Optional[dict] = None
-    branch: Optional[dict] = None
     transfer: Optional[dict] = None
 
     @classmethod
@@ -75,7 +72,6 @@ class Node:
             title=d.get("title"),
             type=d.get("type"),
             tool=d.get("tool"),
-            branch=d.get("branch"),
             transfer=d.get("transfer"),
         )
 

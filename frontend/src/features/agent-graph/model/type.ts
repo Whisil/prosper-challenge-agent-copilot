@@ -15,24 +15,29 @@ export const supportedPropertyTypes = ["string", "number", "integer", "boolean"]
 export type AgentPropertyType = (typeof supportedPropertyTypes)[number]
 
 export const CURRENT_AGENT_DOCUMENT_VERSION = 1
-export const agentNodeTypes = ["conversation", "tool", "branch", "transfer", "end"] as const
+export const agentNodeTypes = ["conversation", "tool", "transfer", "end"] as const
 export type AgentNodeType = (typeof agentNodeTypes)[number]
 
-export const agentEdgeKinds = ["condition", "default", "success", "failure"] as const
+export const agentEdgeKinds = ["condition", "success", "failure"] as const
 export type AgentEdgeKind = (typeof agentEdgeKinds)[number]
 
 export const NEW_TRANSITION_HANDLE = "new-transition"
+export type ConnectionSide = "top" | "right" | "bottom" | "left"
+
+export interface EdgeHandleLayout {
+  source: ConnectionSide
+  target: ConnectionSide
+}
 
 export type NodeCreationKind = AgentNodeType
 
 export interface NodeCreationInput {
   name: string
   title?: string
-  instruction: string
+  instruction?: string
   roleMessage?: string
   type?: AgentNodeType
   tool?: AgentToolConfig
-  branch?: AgentBranchConfig
   transfer?: AgentTransferConfig
 }
 
@@ -48,7 +53,6 @@ export interface ConnectionInteractionState {
 export interface AgentEdge {
   id?: string
   kind?: AgentEdgeKind
-  condition?: string
   function: string
   description: string
   target: string
@@ -68,7 +72,6 @@ export interface AgentNode {
   post_actions?: unknown[]
   end?: boolean
   tool?: AgentToolConfig
-  branch?: AgentBranchConfig
   transfer?: AgentTransferConfig
 }
 
@@ -77,10 +80,6 @@ export interface AgentToolConfig {
   description: string
   confirmationRequired?: boolean
   mockResult?: Record<string, unknown>
-}
-
-export interface AgentBranchConfig {
-  expression: string
 }
 
 export interface AgentTransferConfig {
@@ -110,6 +109,7 @@ export interface AgentSettingsPatch {
 export interface AgentDraft {
   config: AgentDocument
   layout: Record<string, XYPosition>
+  edgeHandles: Record<string, EdgeHandleLayout>
 }
 
 export interface StoredAgent {
@@ -176,8 +176,10 @@ export interface CallReview {
 
 export interface CallRecord extends TestSession {
   title: string
-  isDemo?: boolean
+  agentName?: string
+  isSample?: boolean
   review?: CallReview
+  reviewState?: "pending" | "complete" | "unavailable"
 }
 
 export type AgentEditorAction =
@@ -187,7 +189,7 @@ export type AgentEditorAction =
   | { type: "add_node"; node: AgentNode; position: XYPosition }
   | { type: "delete_node"; nodeName: string }
   | { type: "set_initial_node"; nodeName: string }
-  | { type: "add_edge"; source: string; edge: AgentEdge }
+  | { type: "add_edge"; source: string; edge: AgentEdge; handles?: EdgeHandleLayout }
   | { type: "update_edge"; source: string; functionName: string; patch: Partial<AgentEdge> }
   | { type: "delete_edge"; source: string; functionName: string }
   | { type: "move_node"; nodeName: string; position: XYPosition }
