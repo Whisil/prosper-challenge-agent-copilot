@@ -11,7 +11,7 @@ A visual workspace for designing and testing healthcare voice-agent workflows. T
 
 The product follows the research direction of **define → test → observe → diagnose**. A user builds a workflow, runs a voice test call, reviews the recorded path, and can use the resulting evidence as input for future AI-assisted improvements.
 
-The fresh workspace opens with one **Prosper Flow Test Agent**. It is intentionally rich enough to demonstrate ordinary conversations, mock tools, success and failure paths, warnings, errors, human handoffs, information collection, and multiple terminal outcomes. Call history includes one sample call showing availability being shared before verification, so the review workflow can be demonstrated without a live call.
+The fresh workspace opens with two useful defaults: **Prosper Flow Test Agent**, a rich showcase for demonstrating the builder, and **Prosper Review Example**, a deliberately small graph linked to the sample call-history record. The showcase demonstrates ordinary conversations, mock tools, success and failure paths, warnings, errors, human handoffs, information collection, and multiple terminal outcomes. The smaller review graph keeps the evidence-to-fix scenario understandable without a live call.
 
 ## Product flow
 
@@ -24,7 +24,17 @@ The fresh workspace opens with one **Prosper Flow Test Agent**. It is intentiona
 7. Review the human-readable timeline, outcome, tool/handoff events, and AI call review.
 8. Use the review as evidence for the constrained Copilot proposal workflow when needed.
 
-The suggested graph-fix preview is currently under development and was intentionally dropped from the final test-task demo. The reliable demonstrated experience is the editable graph, validation, active-draft Test call, Call history, and AI review.
+## Post-submission progress
+
+Suggested fixes are implemented as a separate post-call flow rather than another mode of the generic Copilot panel:
+
+```text
+Call review → Generate suggested fix → loading overlay → immutable graph preview → Accept or Deny
+```
+
+The model receives the complete current `AgentDocument`, the completed trace and review, and exact stable node/edge reference indexes. It returns a small typed operation list. The backend rejects unknown references, duplicate IDs, terminal outgoing edges, unsupported fields, and invalid final graphs. The frontend applies those operations only to a cloned draft, preserves layout metadata, and marks the result as unapplied.
+
+The seeded availability-before-verification sample has a deterministic safe fallback if the model is unavailable or returns an invalid patch. Real-call failures are visible and leave the active graph unchanged. Accept persists exactly one new local revision; Deny restores the original view without changing local storage. The generic guideline Copilot remains separate.
 
 ## Key decisions and trade-offs
 
@@ -78,7 +88,7 @@ The frontend owns editing, layout, local persistence, call-history presentation,
 4. Open `http://localhost:5173` in a clean browser profile or clear the local storage keys `prosper-agent-collection-v1` and `prosper-call-history-v1`.
 5. Confirm the only initial agent is **Prosper Flow Test Agent** and that the graph contains conversation, tool, Handoff, and End nodes.
 6. Open the sample Call history record and confirm its completed review identifies the missing verification step.
-7. Edit a node or create a transition, click **Validate**, then save the draft.
+7. Edit a node or create a transition; validation updates live, then save the draft.
 8. Run **Test call**, reach an End or Handoff node, and confirm the status panel dismisses while the completed record appears in Call history.
 
 See the [frontend engineering guide](docs/frontend-architecture.md) for client ownership and the [backend engineering guide](docs/backend-architecture.md) for runtime, API, validation, storage, and model configuration.

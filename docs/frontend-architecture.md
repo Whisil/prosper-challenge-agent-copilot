@@ -155,7 +155,7 @@ Deletion is handled in the graph hook and is shared by inspector and keyboard ac
 
 ## Persistence and migration
 
-Fresh storage is bootstrapped with one Prosper Flow Test Agent showcase graph. It demonstrates conversation, tool, handoff, end, ordinary transitions, information fields, and warning/error paths. Existing local collections are preserved.
+Fresh storage is bootstrapped with two defaults: the rich Prosper Flow Test Agent showcase graph and the small Prosper Review Example graph used by the sample call-history record. Existing local collections are preserved; missing defaults are added without changing the active agent.
 
 Adding a template or blank agent appends a new StoredAgent; it does not replace the current agent. Switching agents changes activeAgentId and preserves each agent's local draft.
 
@@ -211,7 +211,19 @@ The active AI path is post-call review and constrained proposal generation:
 
 Allowed node types are fixed. Raw document replacement, arbitrary code, credentials, unknown IDs, protected entry-node deletion, and invalid terminal edges are rejected.
 
-The suggested graph-fix preview/apply experience is still under development and was intentionally dropped from the final challenge demo. Do not describe it as a completed workflow or add a second proposal mutation path.
+## Post-submission progress
+
+Call-history suggested fixes are owned by `features/suggested-fix`, not by `CopilotPanel`. `useSuggestedFixFlow` captures the active agent, draft version, complete original `AgentDraft`, source call, and review. It owns loading, preview, stale, error, accept, and deny state.
+
+The flow is:
+
+```text
+Call history → suggest-fix API → cloned draft + shared graph patcher → read-only graph preview → Accept/Deny
+```
+
+`features/agent-graph/lib/graphPatch.ts` is the shared immutable operation utility. It preserves layout and `edgeHandles`, assigns deterministic positions to added nodes, applies operations in order, and validates the preview. Accept calls `commitSuggestedFix` once after checking the same agent and draft version; that method increments the revision and persists the agent. Deny clears only the preview. A stale draft disables acceptance and requires a new suggestion.
+
+The sample call can use a deterministic backend fallback for its known verification gap. Real-call failures do not mutate the graph. The generic guideline Copilot remains independent and continues to use its own proposal state.
 
 ## Configuration and model switching
 

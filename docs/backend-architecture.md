@@ -111,6 +111,7 @@ The local control API is intentionally small:
 | POST | /api/test-sessions/{id}/complete | Reconcile a terminal or disconnected session |
 | POST | /api/copilot/review-call | Review a completed trace |
 | POST | /api/copilot/propose | Generate a constrained stable-ID proposal |
+| POST | /api/copilot/suggest-fix | Generate and validate a small post-call suggested-fix patch |
 
 The API is local-only and unauthenticated for the challenge. It should not be exposed as a production service.
 
@@ -173,6 +174,14 @@ Proposal input adds:
 Proposal output is not a replacement document. It is a ChangeProposal containing diagnosis, assumptions, questions, risks, tests, and stable-ID GraphOperation values. The backend rejects unknown operations, null or unknown references, title/function substitutions, protected entry-node deletion, terminal outgoing edges, invalid properties, and invalid resulting graphs.
 
 Structured outputs are requested with JSON Schema and no temperature parameter. A proposal with zero operations is valid when the evidence does not justify a change. The frontend must still require human approval before any local mutation.
+
+## Post-submission progress
+
+`POST /api/copilot/suggest-fix` is deliberately separate from the generic guideline proposal endpoint. It accepts the tested document, completed call, review, and draft version. The prompt includes the full document, compact node and edge reference indexes, the allowed four-operation allowlist, and explicit invalid-reference rules. The model returns a diagnosis, changes, and typed operations only; it cannot return a replacement document or activate a draft.
+
+The backend validates each operation against stable IDs, applies it to a deep copy, and validates the resulting graph before returning it. Strict JSON Schema patch fields use nullable placeholders because strict structured output requires closed objects; backend normalization treats null patch values as omitted changes and rejects empty patches. The active draft is never written by this endpoint.
+
+For the seeded availability-before-verification sample only, model failure or invalid output falls back to a deterministic patch built from the document's actual node and edge IDs. A real-call failure returns an actionable error and leaves the graph unchanged. The frontend previews the returned patch and only Accept persists a new revision; Deny has no backend side effect.
 
 Call review and proposal generation are intentionally deterministic in shape but model-backed in the backend. If the key or model is unavailable, the API returns an actionable error; it does not silently create a fake graph change.
 

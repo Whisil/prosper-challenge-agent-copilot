@@ -34,9 +34,9 @@ Start the frontend in another:
 make frontend-dev
 ```
 
-Open [http://localhost:5173](http://localhost:5173) to use the agent workspace. On a fresh browser the builder starts with one **Prosper Flow Test Agent** showcase graph containing conversations, tools, ordinary transitions, handoffs, terminal outcomes, warnings, and errors. **Call history** starts with one sample call that demonstrates a reviewable safety gap. The builder also supports template or blank-agent onboarding, browser-local multi-agent storage, four-sided connections, local draft versions, validation, and draft-aware **Test call** execution.
+Open [http://localhost:5173](http://localhost:5173) to use the agent workspace. On a fresh browser the builder starts with a complex **Prosper Flow Test Agent** showcase graph and a small **Prosper Review Example** agent linked to the sample Call history record. The showcase demonstrates conversations, tools, ordinary transitions, handoffs, terminal outcomes, warnings, and errors; the review example keeps the suggested-fix scenario easy to understand. The builder also supports template or blank-agent onboarding, browser-local multi-agent storage, four-sided connections, local draft versions, validation, and draft-aware **Test call** execution.
 
-The reliable demo path is the editable graph, Test call, Call history, and post-call AI review. AI-generated suggested graph fixes are still under development and were dropped from the final test-task demo scope; the current proposal infrastructure remains available for continued development but is not presented as a finished workflow. For the reviewer-oriented solution overview, see [`solution.md`](solution.md). `Ctrl+C` stops either process. Run `make help` to list all targets.
+The reliable demo path is the editable graph, Test call, Call history, and post-call AI review. The separate suggested-fix flow is documented below as post-submission progress. For the reviewer-oriented solution overview, see [`solution.md`](solution.md). `Ctrl+C` stops either process. Run `make help` to list all targets.
 
 Prefer raw commands? Use:
 
@@ -61,3 +61,9 @@ Remember to update `backend/.env` with `OPENAI_API_KEY`, `OPENAI_MODEL`, and the
 Frontend ownership, state, and graph boundaries are documented in [`docs/frontend-architecture.md`](docs/frontend-architecture.md). Backend runtime, API, validation, storage, and model configuration are documented in [`docs/backend-architecture.md`](docs/backend-architecture.md). Repository contribution rules live in [`AGENTS.md`](AGENTS.md) and [`frontend/AGENTS.md`](frontend/AGENTS.md).
 
 To run a different agent, point `AGENT_FLOW` in `bot.py` at another JSON file.
+
+## Post-submission progress
+
+Suggested fixes are a separate post-call workflow. From a completed call review, the user can generate a constrained patch rather than asking AI to replace the entire agent JSON. The backend receives the full document, trace, review, and exact node/edge reference indexes; it validates the typed operations and dry-runs the resulting graph. The frontend then previews the immutable draft with a clear “not applied” state.
+
+The seeded sample call has a deterministic verification fallback when the AI request is unavailable or invalid, so the flow can be demonstrated safely. Real-call failures do not change the graph. **Accept** saves one new local revision; **Deny** discards the preview. The generic guideline Copilot remains a separate editor surface.
