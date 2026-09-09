@@ -62,10 +62,6 @@ export function loadAgentCollection(): AgentCollection | undefined {
     try {
       const parsed = parseCollection(JSON.parse(raw))
       if (parsed) {
-        if (!parsed.agents.length) {
-          return undefined
-        }
-        if (!parsed.agents.some((agent) => agent.id === parsed.activeAgentId)) parsed.activeAgentId = parsed.agents[0]?.id ?? ""
         saveAgentCollection(parsed)
         return parsed
       }

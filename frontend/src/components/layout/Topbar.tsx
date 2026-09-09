@@ -24,14 +24,13 @@ interface TopbarProps {
   canUndo: boolean
   canRedo: boolean
   onCreateAgent: (config: AgentConfig) => void
-  initialSetup?: boolean
   onReset: () => void
   onOpenHistory: () => void
 }
 
-export function Topbar({ agentName, persona, onUpdatePersona, onTestCall, agents, activeAgentId, onSelectAgent, isDirty, validationErrors, onSelectValidationError, onSave, onUndo, onRedo, canUndo, canRedo, onCreateAgent, initialSetup = false, onReset, onOpenHistory }: TopbarProps) {
+export function Topbar({ agentName, persona, onUpdatePersona, onTestCall, agents, activeAgentId, onSelectAgent, isDirty, validationErrors, onSelectValidationError, onSave, onUndo, onRedo, canUndo, canRedo, onCreateAgent, onReset, onOpenHistory }: TopbarProps) {
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [creationOpen, setCreationOpen] = useState(initialSetup)
+  const [creationOpen, setCreationOpen] = useState(false)
   const [agentMenuOpen, setAgentMenuOpen] = useState(false)
   const [validationRequest, setValidationRequest] = useState(0)
   const agentMenuRef = useRef<HTMLDivElement>(null)
@@ -47,7 +46,7 @@ export function Topbar({ agentName, persona, onUpdatePersona, onTestCall, agents
             </button>
             {agentMenuOpen && <div className="absolute left-0 top-full z-50 mt-2 w-64 rounded-xl border border-[#dfe4df] bg-white p-2 shadow-[0_16px_35px_rgba(31,48,40,0.16)]" role="listbox" aria-label="Agents">
               <div className="space-y-1">{agents.map((storedAgent) => <button key={storedAgent.id} type="button" role="option" aria-selected={storedAgent.id === activeAgentId} onClick={() => { onSelectAgent(storedAgent.id); setAgentMenuOpen(false) }} className={`w-full rounded-lg px-3 py-2 text-left text-[11px] font-semibold ${storedAgent.id === activeAgentId ? "bg-[#f0f3ef] text-[#37413c]" : "text-[#6e7c72] hover:bg-[#f7faf7]"}`}>{storedAgent.draft.config.name}</button>)}</div>
-              <Button type="button" size="sm" variant="outline" className="w-full justify-center" onClick={() => { setAgentMenuOpen(false); setCreationOpen(true) }}><Plus size={13} /> Add agent</Button>
+              <Button type="button" size="sm" variant="outline" className="w-full justify-center mt-2" onClick={() => { setAgentMenuOpen(false); setCreationOpen(true) }}><Plus size={13} /> Add agent</Button>
               <Button type="button" size="sm" variant="ghost" className="mt-1 w-full justify-center" onClick={() => { onReset(); setAgentMenuOpen(false) }}>Reset example template</Button>
             </div>}
           </div>
@@ -70,7 +69,7 @@ export function Topbar({ agentName, persona, onUpdatePersona, onTestCall, agents
         </Button>
       </div>
       <AgentSettingsDialog open={settingsOpen} persona={persona} onOpenChange={setSettingsOpen} onSave={onUpdatePersona} />
-      <AgentCreationDialog open={creationOpen} initialSetup={initialSetup} onOpenChange={setCreationOpen} onCreate={onCreateAgent} />
+      <AgentCreationDialog open={creationOpen} onOpenChange={setCreationOpen} onCreate={onCreateAgent} />
     </header>
   )
 }

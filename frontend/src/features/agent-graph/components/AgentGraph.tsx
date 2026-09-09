@@ -79,6 +79,7 @@ function GraphContent({ config, layout, edgeHandles, selectedNodeName, onSelectN
       <ReactFlow
         nodes={selectedNodes}
         edges={edges}
+        minZoom={0.15}
         nodeTypes={{ agentNode: AgentNode }}
         onNodeClick={onNodeClick}
         onEdgeClick={onEdgeClick}

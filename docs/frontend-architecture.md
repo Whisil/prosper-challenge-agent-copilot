@@ -1,86 +1,259 @@
-# Frontend architecture
+# Frontend engineering guide
 
-## Folder structure
+This document is the frontend reference for the Prosper Agent Composer. It explains where state lives, how a graph edit becomes a runtime draft, and where to change the system safely.
 
-```text
-frontend/src/
-  app/                       Application composition and shell
-  components/
-    layout/                  Shared navigation and workspace layout
-    ui/                      Reusable design-system primitives
-  features/
-    agent-graph/             Graph model, fixture, actions, validation, adapter, and canvas
-    agent-inspector/         Selected-node editor and transition controls
-    agent-settings/          Global persona and blank-agent creation
-    agent-copilot/           Evidence Board, AI proposal contracts, and operation applier
-    call-history/             Browser-local call records, AI reviews, and trace review
-  lib/                       Cross-feature utilities
-  styles/                    Global tokens and canvas styles
-```
+## Contents
 
-Components use PascalCase filenames (`AgentGraph.tsx`, `Button.tsx`). Hooks use `use` names (`useAgentGraph.tsx`). Feature-local types live in `model/type.ts`.
+- [Run the frontend](#run-the-frontend)
+- [Frontend boundaries](#frontend-boundaries)
+- [State ownership](#state-ownership)
+- [The agent data model](#the-agent-data-model)
+- [Graph editing](#graph-editing)
+- [Persistence and migration](#persistence-and-migration)
+- [Validation](#validation)
+- [Calls and call history](#calls-and-call-history)
+- [AI boundaries](#ai-boundaries)
+- [Configuration and model switching](#configuration-and-model-switching)
+- [How to make a change](#how-to-make-a-change)
+- [Tests and troubleshooting](#tests-and-troubleshooting)
 
-## Data flow
+## Run the frontend
 
-```text
-AgentDocument migration/adapters
-  -> AgentDraft history and serializable editor actions
-  -> validateAgentConfig
-  -> flowAdapter.ts
-  -> React Flow nodes and edges
-  -> AgentGraph canvas
-  -> selected node
-  -> NodeInspector edits
-```
+From the repository root:
 
-`AgentDocument` is the canonical editor artifact. It carries a version, revision, stable node/edge IDs, display titles, typed node metadata, and editor layout outside runtime semantics. `agentDocument.ts` owns migration from the legacy `AgentConfig` and conversion back to the backend-compatible runtime contract. React Flow types are kept at the graph boundary.
+~~~bash
+make frontend-install
+make frontend-dev
+~~~
 
-## Design system
+The development server is normally available at http://localhost:5173.
 
-The frontend uses Tailwind utilities and local shadcn-style primitives. Shared controls belong in `src/components/ui` and should be extended before a feature creates a one-off version. Design tokens and canvas-specific styles live in `src/styles/globals.css`.
+The frontend reads these variables from frontend/.env:
 
-The current visual direction is a calm healthcare workspace: warm off-white canvas, dark evergreen text and actions, quiet borders, and green state accents. Graph nodes use white cards with restrained shadows and readable transition labels.
+~~~env
+VITE_AGENT_API_URL=http://127.0.0.1:8000
+VITE_VOICE_CLIENT_URL=http://localhost:7860/client
+~~~
 
-Local `Select`, `Tooltip`, and `FormField` primitives follow the shadcn-style approach: Radix supplies accessible behavior and the project owns the visual styles. Use `Select` for node/property choices instead of native `<select>` elements, and use `InfoTooltip` for fields whose relationship to the backend contract is not obvious. Inputs and textareas use compact typography so the inspector remains scannable.
+VITE_AGENT_API_URL points to the backend control API. VITE_VOICE_CLIENT_URL points to the Pipecat browser client. They are different services.
 
-## Editor and validation boundary
+## Frontend boundaries
 
-The editor starts from `exampleAgent.ts` only when no browser agent collection exists. `agentCollection.ts` owns the browser-local list, active-agent selection, migration from the old single-draft key, and per-agent draft storage. `history.ts` owns immutable past/present/future snapshots; `draftPersistence.ts` owns local save/load. `agentOperations.ts` owns serializable mutations, while `validateAgent.ts` reports blocking errors and non-blocking warnings. The Copilot emits `GraphOperation` values using stable node and edge IDs rather than display titles or array indexes. `operationApplier.ts` validates and applies those operations immutably, and is the only proposal-to-draft boundary.
+The frontend owns:
 
-Frontend-only node positions live in `AgentDraft.layout` and are not part of the backend `AgentConfig` contract. A future API integration should replace the fixture through a service or query hook and retain `flowAdapter.ts` as the conversion boundary. Components should not import backend files directly.
+- Graph editing, layout, selection, and inspector state.
+- Local agent collections, draft revisions, undo/redo, and call history.
+- Client-side validation and validation navigation.
+- The request/response boundary for draft activation, test sessions, reviews, and proposals.
+- Rendering the graph and translating runtime trace data into readable call history.
 
-The workspace has one graph-level entry point through `initial_node`. The entry node is protected from deletion and remains the entry point when renamed. Regular nodes and terminal nodes are created through separate UI actions; terminal nodes set the backend-compatible `end` flag at creation time, so multiple terminal nodes can coexist without exposing a misleading role-conversion control in the inspector.
+The backend owns runtime execution, runtime validation, session events, and the OpenAI API boundary. Frontend components must not import backend Python code or OpenAI configuration.
 
-The sidebar owns its collapsed/expanded UI state locally. Collapsing it hides navigation labels while preserving icon navigation and the active state; this state is intentionally not persisted yet. **Agents** is the only active workspace in the focused challenge scope.
+The main composition is:
 
-## Editable graph behavior
+~~~text
+AppShell
+  ├─ useAgentGraph
+  ├─ AgentGraph
+  ├─ NodeInspector
+  ├─ Topbar / workspace navigation
+  ├─ CallHistoryWorkspace
+  └─ CopilotPanel
+       └─ agentApi.ts
+~~~
 
-`AgentGraph` uses controlled React Flow node state with `useNodesState` and `onNodesChange`. This keeps a node’s position and dragging state responsive under the pointer; `onNodeDragStop` is the only point that writes the final position to `AgentDraft.layout`. `AgentNode` uses a raised shadow, scale, and stacking order while dragging. The canvas itself is the node navigation surface; the separate outline is intentionally omitted.
+AppShell coordinates workspace-level events. Feature code owns feature-specific behavior. frontend/src/lib/agentApi.ts is the only place that knows the HTTP control API paths.
 
-Every node renders target handles on all four sides. Each non-terminal node also renders four reusable source connection dots; terminal nodes render no outgoing source handles. Graph cards do not render a transition footer; existing transition rows are metadata only and do not contain source handles. `AgentGraph` maps a new canvas connection to `add_edge`; it does not expose a reconnect interaction in this slice or create a second graph mutation model. React Flow edges remain a rendering projection of the backend-shaped config.
+## State ownership
 
-`AgentDraft.edgeHandles` stores `{ source, target }` side metadata keyed by stable edge ID. It is editor-only and defaults legacy edges to bottom-to-left. `flowAdapter` maps the metadata to React Flow handle IDs while `documentToRuntimeConfig` drops it before backend execution.
+### Workspace state
 
-`TransitionReference` (`source` plus `functionName`) identifies an existing transition for inspector selection. Transient `ConnectionInteractionState` tracks whether the canvas is idle or creating a new transition. React Flow connection and pointer objects never enter `AgentDraft` or `AgentConfig`; connection sides are reduced to serializable metadata before the editor action is dispatched.
+frontend/src/app/AppShell.tsx owns:
 
-Transition editor fields map directly to the backend contract: name → `function`, connected node → `target`, when to use → `description`, and information to collect → `properties` plus `required`. New information items use `type: "string"` in the UI because callers naturally provide spoken text; the backend contract and validator still preserve supported `number`, `integer`, and `boolean` values for future Copilot or imported configurations. `validateAgentConfig` provides structured paths for these fields and is the source for both inline inspector errors and the top-bar summary.
+- The active workspace (agents or call-history).
+- Selected call and Copilot evidence.
+- Active test-call session polling.
+- Review request coordination.
+- Switching between graph and call-history views.
 
-The serializable `update_agent` action updates the global persona without changing graph nodes. The top-bar agent menu opens the settings dialog. The backend applies the global persona to nodes without `role_message`; node-specific guidance intentionally replaces it for a node that needs different behavior.
+The graph and Copilot surfaces remain mounted when the workspace changes so an in-progress proposal or selection is not lost simply because the user navigates to Call history.
 
-Default positions are produced by `graphLayout.ts`, which keeps initial, fallback, and newly created nodes separated by a shared vertical spacing constant. Dragged positions remain frontend-only in `AgentDraft.layout`.
+### Graph state
 
-`identifier.ts` separates presentation from persistence: `humanizeIdentifier` renders names such as `choose_intent` as `Choose Intent`, while `toIdentifier` normalizes edited names before they enter `AgentConfig`. Validation paths remain backend-safe, but user-facing locations and messages are humanized.
+frontend/src/features/agent-graph/hooks/useAgentGraph.tsx owns:
 
-New-node creation calls `fitView` with the created node after React Flow mounts it, keeping the selected node visible even when it is appended below the existing graph. The agent selector and Agent settings controls are separate top-bar interactions; only the settings dialog mutates the draft in this slice.
+- The active local agent.
+- The current AgentDraft.
+- Draft history and undo/redo.
+- Node and edge mutations.
+- Selected node and transition.
+- Validation results.
+- Saving and activating the draft.
 
-Deletion is reducer-owned: removing a node removes its layout entry and every inbound edge. Both the inspector delete action and React Flow's keyboard `Delete` event call the same graph-hook mutation. React Flow's asynchronous `onBeforeDelete` guard rejects deletion of the graph's `initial_node`. After a successful deletion, the graph hook clears selection instead of choosing another node, and the inspector renders an empty selection state until the user selects a node.
+A mutation is dispatched as a serializable editor action. React Flow objects, DOM events, and pointer events never enter AgentDraft.
 
-Validation errors also carry optional structured location metadata for the node, transition, property, and field. The top-bar `ValidationSummary` groups errors and warnings, formats those locations for users, and selects the affected node when clicked. The flow adapter passes node-level issues into `AgentNode`, which displays an error or warning marker even when that node is not selected. The minimap is intentionally omitted; the canvas retains its grid, fit-view action, and zoom controls. New nodes are created through typed setup dialogs in `NodeCreationDialog`, which commit only complete required fields. Transfer setup edits handoff reason/context and creates a terminal handoff node with internal runtime instructions; regular transitions are the only routing mechanism.
+### Feature storage
 
-The top bar exposes explicit Validate, Save, Undo, Redo, and local draft-history controls. The top-right of the canvas shows an Unsaved badge while the current draft differs from the saved revision. `TestSessionPanel` displays events returned by the local control API and dismisses itself after terminal status. There is no standalone simulator or hidden scenario runner; Copilot preview is a validated document sent to a real session-specific backend runtime.
+Browser-local storage keys are intentionally small and explicit:
 
-`CopilotPanel` owns the review UI, but proposal generation crosses one explicit boundary: `createCopilotProposal` sends an `AgentDocument`, draft version, evidence text, and optional call record to `POST /api/copilot/propose`. The backend owns the OpenAI key and the single `OPENAI_MODEL` setting, and returns a constrained `ChangeProposal` JSON object, never a replacement document. Both review and proposal requests use a shared context containing the full document, node/edge reference indexes, allowed node types, and operation contract. The backend requests strict JSON Schema Structured Outputs without temperature, then validates the response and the resulting graph. Its validator allows only `conversation`, `tool`, `transfer`, and `end` nodes and the seven stable-ID graph operations. A new node may include its complete outgoing edges or receive them through `add_edge`; each edge ID can be introduced only once. Node and edge references use stable IDs; edge targets use exact runtime names; titles are display-only. The frontend treats the response as untrusted until operation and local document validation succeed.
+| Key | Owner | Contents |
+| --- | --- | --- |
+| prosper-agent-collection-v1 | agentCollection.ts | Local agents and each agent's current draft |
+| prosper-call-history-v1 | callHistoryStorage.ts | Completed test-call records and reviews |
 
-Evidence can come from a guideline typed into the panel or from an AI review attached to a browser-local `CallRecord`. `CallHistoryWorkspace` stores the call status, runtime trace, review, agent name, and optional sample marker under `prosper-call-history-v1`; it does not store transcripts. `hasTerminalEvidence` recognizes an ended, handoff, or terminal node-entry event and reconciles the backend session before starting the single post-terminal review request. An actionable review selects its matching agent and starts proposal generation; `CopilotPanel` automatically builds a validated immutable preview while the canvas shows a loading state. Trace summaries are derived from structured payloads such as source/target titles, transition names, collected fields, tool names, and handoff reasons.
+The backend does not own this browser collection. That keeps editing responsive and makes the challenge demo self-contained.
 
-The panel presents diagnosis, confidence, assumptions, questions, risks, and stable-ID operations. The proposal contract and immutable operation boundary remain in place, but suggested graph-fix preview/apply is under development and was dropped from the final test-task demo. Initial AI graph creation is deliberately disabled in `AgentCreationDialog`; the fresh workspace starts with the single Prosper Flow Test Agent showcase, while templates and blank agents remain available for additional local agents.
+## The agent data model
+
+There are three related representations:
+
+1. AgentDocument is the canonical editor document. It adds version, stable document id, and revision to the runtime-shaped graph.
+2. AgentDraft wraps the document with editor-only layout and edgeHandles metadata.
+3. AgentConfig is the runtime compatibility shape sent to the backend. The adapter removes layout and handle metadata before sending it.
+
+Important files:
+
+- frontend/src/features/agent-graph/model/type.ts — shared frontend types.
+- frontend/src/features/agent-graph/lib/agentDocument.ts — migration and runtime adapters.
+- frontend/src/features/agent-graph/lib/agentCollection.ts — local multi-agent storage.
+- frontend/src/features/agent-graph/lib/agentOperations.ts — serializable mutations.
+- frontend/src/features/agent-graph/lib/graphLayout.ts — initial and new-node positions.
+
+Node types are conversation, tool, transfer, and end. transfer and end are terminal. Branch nodes are intentionally not part of the current contract; ordinary transitions provide routing.
+
+Stable IDs and display names are separate:
+
+- id, name, edge IDs, functions, targets, and property keys are machine-facing.
+- title and rendered labels are human-facing.
+- identifier.ts humanizes names such as record_details to Record Details.
+
+There is one graph-level initial_node. The entry node cannot be deleted. Terminal nodes cannot be transition sources.
+
+## Graph editing
+
+features/agent-graph/components/AgentGraph.tsx adapts the draft to React Flow. flowAdapter.ts creates React Flow nodes and edges; the adapter is a rendering projection, not a second graph model.
+
+A connection follows this path:
+
+~~~text
+React Flow Handle
+  -> onConnect(source/target handle IDs)
+  -> connection side metadata
+  -> add_edge editor action
+  -> AgentDraft.config.nodes[].edges[]
+~~~
+
+Each node has target dots on all four sides. Non-terminal nodes also have source dots. AgentDraft.edgeHandles stores the chosen source and target sides by stable edge ID. This metadata is not sent to the backend. Legacy edges default to bottom-source / left-target.
+
+The inspector edits node instructions, persona overrides, and transition metadata. Transition topology is created on the canvas. Transition descriptions use one field, When to use. Information-to-collect fields become structured transition arguments; the first-user editor creates them as strings.
+
+Deletion is handled in the graph hook and is shared by inspector and keyboard actions:
+
+- The protected entry node is rejected.
+- Deleting a node deletes inbound transitions and editor layout.
+- Selection is cleared after deletion; another node is not auto-selected.
+
+## Persistence and migration
+
+Fresh storage is bootstrapped with one Prosper Flow Test Agent showcase graph. It demonstrates conversation, tool, handoff, end, ordinary transitions, information fields, and warning/error paths. Existing local collections are preserved.
+
+Adding a template or blank agent appends a new StoredAgent; it does not replace the current agent. Switching agents changes activeAgentId and preserves each agent's local draft.
+
+Draft saving increments the document revision and stores the current local snapshot. The backend receives the saved runtime document only when the user activates/saves it for testing.
+
+Legacy migrations live in agentDocument.ts and agentCollection.ts. Keep migrations one-way and explicit. Do not make UI components understand old runtime formats.
+
+## Validation
+
+validateAgent.ts is the client-side validation source used by the top-bar summary, inspector fields, and graph error markers. It reports structured locations for nodes, transitions, properties, and fields.
+
+Validation covers, among other things:
+
+- Required names and instructions.
+- A valid initial node.
+- Exact transition targets.
+- Unique node/edge/function identifiers.
+- Required information fields matching property keys.
+- Reachability and terminal behavior.
+- Tool and handoff configuration.
+
+The backend validates again before activation or runtime loading. Client validation improves editing feedback; it is not a security boundary.
+
+## Calls and call history
+
+The call flow is:
+
+~~~text
+Save/activate AgentDocument
+  -> POST /api/draft
+  -> POST /api/test-sessions
+  -> browser voice client on port 7860
+  -> runtime events
+  -> session polling
+  -> terminal evidence
+  -> local CallRecord
+  -> POST /api/copilot/review-call
+~~~
+
+CallHistoryWorkspace stores readable summaries of node entries, transitions, tools, handoffs, and outcomes. It stores trace evidence, not a transcript. A completed End or Handoff event is the normal review trigger. If the backend/OpenAI review is unavailable, the record shows an actionable unavailable state instead of an endless loading state.
+
+The sample record is linked to the showcase agent so the review workflow can be inspected without placing a live call. Real calls remain local to the browser.
+
+## AI boundaries
+
+The active AI path is post-call review and constrained proposal generation:
+
+1. The backend reviews the completed trace and tested document.
+2. The frontend displays the review and evidence.
+3. A proposal request includes the current document, evidence, stable node/edge reference indexes, and an operation allowlist.
+4. The backend returns stable-ID GraphOperation values and validates the resulting graph.
+5. The frontend treats the proposal as untrusted and previews it immutably.
+
+Allowed node types are fixed. Raw document replacement, arbitrary code, credentials, unknown IDs, protected entry-node deletion, and invalid terminal edges are rejected.
+
+The suggested graph-fix preview/apply experience is still under development and was intentionally dropped from the final challenge demo. Do not describe it as a completed workflow or add a second proposal mutation path.
+
+## Configuration and model switching
+
+There is no Copilot model setting in the frontend.
+
+- Change VITE_AGENT_API_URL only when the control API host or port changes.
+- Change VITE_VOICE_CLIENT_URL only when the Pipecat browser client URL changes.
+- Change the voice runtime model in the active AgentDocument.model.
+- Change the Copilot review/proposal model in backend/.env using OPENAI_MODEL.
+
+Restart the backend after changing OPENAI_MODEL. The frontend never receives the OpenAI key or model credential.
+
+## How to make a change
+
+1. Find the owning feature under frontend/src/features.
+2. Update the feature model before changing components if a contract changes.
+3. Keep runtime conversion in agentDocument.ts or the relevant adapter.
+4. Keep React Flow-specific mapping in flowAdapter.ts and AgentGraph.tsx.
+5. Use serializable actions for draft mutations.
+6. Update client validation and backend validation when a runtime rule changes.
+7. Add or update tests near the owning feature.
+8. Update this guide when ownership, commands, configuration, or API boundaries change.
+
+Avoid putting graph mutations in presentational components or duplicating local-storage logic.
+
+## Tests and troubleshooting
+
+Run the frontend checks from the repository root:
+
+~~~bash
+CI=1 pnpm --dir frontend typecheck
+CI=1 pnpm --dir frontend lint
+CI=1 pnpm --dir frontend test
+CI=1 pnpm --dir frontend build
+~~~
+
+Common issues:
+
+- vite: command not found: run make frontend-install.
+- Cannot reach 127.0.0.1:8000: start make run; port 7860 is the voice client, not the control API.
+- A different control port: set PROSPER_CONTROL_PORT in backend/.env and update VITE_AGENT_API_URL.
+- A stuck or unavailable AI review: check OPENAI_API_KEY, OPENAI_MODEL, backend logs, and the control API health endpoint.
+- The graph looks stale after changing local templates: clear prosper-agent-collection-v1 in browser storage. This removes local agents, so back up needed work first.
+
+For backend runtime and API details, see Backend engineering guide (backend-architecture.md).

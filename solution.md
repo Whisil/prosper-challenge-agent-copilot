@@ -1,47 +1,84 @@
-# Prosper Agent Copilot — Solution Walkthrough
+# Prosper Agent Copilot — Solution Overview
 
-## Product position
+## What was built
 
-Prosper is a reviewable builder for healthcare voice-agent workflows. Phase 1 lets a user define, validate, save, and test a graph. The lean Phase 2 slice automatically reviews a call trace and turns that review, or a written guideline, into a structured AI proposal that the user can preview and approve.
+A visual workspace for designing and testing healthcare voice-agent workflows. The core idea is to represent the agent as a graph:
 
-## User flow
+- Nodes describe what the agent says or does.
+- Transitions describe when the conversation moves to another node.
+- End and Handoff nodes make completion and escalation explicit.
+- Validation helps the user find incomplete or unsafe graph configuration before a call.
 
-1. On first open, choose the Clinic Scheduler template, Patient Intake template, or blank agent. Initial AI graph creation is visible as a disabled Coming soon affordance.
-2. Build and validate the local graph.
-3. Save and run a draft-aware Test call.
-4. Open Call history and read the human-readable timeline and automatic review after the flow reaches an End or Handoff node; Prosper Flow Test Agent provides one dependable sample call without a live voice call.
-5. Ask the Evidence-to-Flow Copilot to diagnose the review or a guideline.
-6. Review stable-ID operations, risks, questions, and regression-test text.
-7. Preview the proposal, optionally run a preview call, then apply selected changes.
-8. Save a new local revision and run the active draft again.
+The product follows the research direction of **define → test → observe → diagnose**. A user builds a workflow, runs a voice test call, reviews the recorded path, and can use the resulting evidence as input for future AI-assisted improvements.
 
-## Boundary decisions
+The fresh workspace opens with one **Prosper Flow Test Agent**. It is intentionally rich enough to demonstrate ordinary conversations, mock tools, success and failure paths, warnings, errors, human handoffs, information collection, and multiple terminal outcomes. Call history includes one sample call showing availability being shared before verification, so the review workflow can be demonstrated without a live call.
 
-- `AgentDocument` is the frontend editor artifact. The backend keeps `AgentConfig` as its runtime-compatible contract.
-- Stable IDs are used by Copilot operations; display titles remain human-readable.
-- Layout is editor-only and never reaches Pipecat semantics.
-- The backend owns the OpenAI key and the single `OPENAI_MODEL` configuration. It requests strict JSON Schema Structured Outputs without temperature and validates structured proposal responses.
-- The frontend owns the local agent collection, drafts, call history, AI review display, proposal preview/review, immutable operation application, and local revisions. Connection-side metadata is editor-only and never enters runtime JSON.
-- Preview documents are attached to one test session and never activate themselves.
+## Product flow
 
-## Intentionally small scope
+1. Start with the showcase agent, a scheduler template, an intake template, or a blank agent.
+2. Add and connect nodes on the canvas.
+3. Edit instructions, transition descriptions, and information to collect in the inspector.
+4. Validate the graph and resolve blocking errors.
+5. Save a local revision and run a Test call against that draft.
+6. Open Call history after the call reaches an End or Handoff node.
+7. Review the human-readable timeline, outcome, tool/handoff events, and AI call review.
+8. Use the review as evidence for the constrained Copilot proposal workflow when needed.
 
-The Copilot has three focused endpoints and no backend proposal database. Call history is browser-local and contains runtime traces, not transcripts. One sample call attached to Prosper Flow Test Agent provides evidence without requiring a live call. Branch nodes were intentionally removed because ordinary transitions already express routing and a second routing abstraction confused the builder; transfer nodes remain for healthcare safety but are terminal handoff boundaries. Tool, transfer, and end-node behavior is demonstrative metadata. There is no production EHR, telephony deployment, PHI workflow, analytics warehouse, collaboration, authentication, arbitrary code execution, or HIPAA claim. The multi-agent list is browser-local only.
+The suggested graph-fix preview is currently under development and was intentionally dropped from the final test-task demo. The reliable demonstrated experience is the editable graph, validation, active-draft Test call, Call history, and AI review.
 
-There is no standalone simulator, hidden deterministic Copilot scenario runner, or initial AI graph-generation endpoint. AI-generated graph-fix preview/apply is explicitly under development and was dropped from the final test-task demo; the dependable demonstrated slice is the editable graph, Test call, Call history, and AI review evidence.
+## Key decisions and trade-offs
 
-## Safety choices
+### Graph-first editing
 
-- Model output must match a strict closed JSON Schema and use a small allowlist of graph operations. The prompt includes the complete current document and exact stable node/edge reference tables. Allowed node types are conversation, tool, transfer, and end.
-- The backend validates the proposal shape, stable-ID references, exact runtime edge targets, one-time edge introduction, type-specific metadata, properties/required matching, and the resulting graph before returning it. A new node may carry its complete outgoing edges or receive them through `add_edge`; an edge ID can only be introduced once.
-- Titles are presentation-only. The model must use stable IDs for operation references and exact runtime names for edge targets; invalid output is rejected rather than silently repaired.
-- Unknown references, malformed patches, protected entry-node deletion, identifier replacement, and oversized evidence are rejected.
-- Empty operations are valid when the evidence does not justify a safe change.
-- No proposal is applied, saved, or activated without explicit user actions.
-- Missing backend or OpenAI configuration produces an actionable error instead of a fabricated result.
+The canvas is the source of truth for topology. Users create transitions by dragging between visible connection dots; the inspector configures the meaning of an existing transition. This is more understandable than mixing graph connections with dropdown-based form editing.
 
-## Five-minute demo
+The trade-off is that the editor has fewer convenience shortcuts than a workflow platform. That is deliberate: a smaller interaction model makes the relationship between the graph and the runtime easier to understand.
 
-Start the services using `docs/development.md`, open Prosper Flow Test Agent, and inspect its deliberate verification gap. Open Call history and select the sample call. Read its completed review and demonstrate the evidence loop; suggested graph-fix preview remains under development and is not part of the final challenge demo.
+### One entry point and explicit terminal nodes
 
-See [`docs/product-code-flow.md`](docs/product-code-flow.md) for the code path and [`docs/development.md`](docs/development.md) for exact commands and troubleshooting.
+The graph has one protected `initial_node`. End and Handoff nodes are terminal and cannot have outgoing transitions. Handoff nodes represent a safety boundary where automation stops and staff take over.
+
+Branch nodes were removed because ordinary transitions already express routing. Keeping both a Branch abstraction and transition conditions made the builder harder to understand without adding value for this task.
+
+### Stable runtime identifiers and display titles
+
+Machine-safe node and edge identifiers are kept separate from human-readable titles. Copilot operations refer to stable IDs, while users see normal names such as “Offer Times” instead of `offer_times`. This prevents renaming a display title from silently changing runtime references.
+
+### Local persistence
+
+Agents, drafts, revisions, layouts, and call history are stored in browser local storage. This keeps the challenge self-contained and makes the demo deterministic without requiring authentication, a database, or multi-user infrastructure.
+
+The trade-off is that data is browser-local and not suitable for collaboration or production deployment. The backend remains responsible for validating and running the selected draft, but it does not become a second source of truth for the editor.
+
+### Evidence instead of a large feedback system
+
+Call history stores traces, not a transcript warehouse. It turns runtime events into short, human-readable steps and starts AI review only after a terminal outcome. The sample call makes the evidence loop reviewable when voice services are unavailable.
+
+This is intentionally narrower than a full call analytics product. It avoids pretending that lightweight traces contain information the system did not actually collect.
+
+## Architecture at a glance
+
+```text
+React workspace
+  -> local AgentDocument and revision history
+  -> graph validation and React Flow adapter
+  -> active-draft control API
+  -> Pipecat runtime and browser voice client
+  -> session trace
+  -> local Call history and post-terminal AI review
+```
+
+The frontend owns editing, layout, local persistence, call-history presentation, and review state. The backend owns runtime execution, draft activation, session events, validation at the runtime boundary, and the AI API boundary. Layout never enters runtime semantics, and the AI cannot silently activate or publish a draft.
+
+## Concise test walkthrough
+
+1. Install dependencies with `make install` and `make frontend-install`.
+2. Configure `backend/.env` with the required voice credentials, `OPENAI_API_KEY`, and `OPENAI_MODEL`.
+3. Start the backend with `make run` and the frontend with `make frontend-dev`.
+4. Open `http://localhost:5173` in a clean browser profile or clear the local storage keys `prosper-agent-collection-v1` and `prosper-call-history-v1`.
+5. Confirm the only initial agent is **Prosper Flow Test Agent** and that the graph contains conversation, tool, Handoff, and End nodes.
+6. Open the sample Call history record and confirm its completed review identifies the missing verification step.
+7. Edit a node or create a transition, click **Validate**, then save the draft.
+8. Run **Test call**, reach an End or Handoff node, and confirm the status panel dismisses while the completed record appears in Call history.
+
+See the [frontend engineering guide](docs/frontend-architecture.md) for client ownership and the [backend engineering guide](docs/backend-architecture.md) for runtime, API, validation, storage, and model configuration.

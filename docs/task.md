@@ -4,7 +4,7 @@ Prosper builds voice AI for healthcare phone calls across several use cases. Our
 
 ## Phase 1 — Voice Agent Builder
 
-Build a UI for creating and editing voice agents, where an agent is an **graph of nodes** — each node a step in the conversation, each edge a transition the agent can take. A user should be able to edit the node graph and place a test call from the UI, similar to existing products like [ElevenLabs Agents](https://elevenlabs.io/) or [Retell AI](https://www.retellai.com/) (see the reference screenshot below).
+Build a UI for creating and editing voice agents, where an agent is an **graph of nodes** — each node a step in the conversation, each edge a transition the agent can take. A user should be able to edit the node graph and place a test call from the UI, similar to existing products like [ElevenLabs Agents](https://elevenlabs.io/) or [Retell AI](https://www.retellai.com/).
 
 ### What's already built
 
@@ -52,5 +52,3 @@ We highly encourage you to use AI tools (Claude Code, Cursor, etc.) to help with
 ## Submission
 
 Submit a link to a repository containing your code and a `solution.md` file with an overview of your solution and the key architectural decisions you made.
-
-![alt text](image.png)

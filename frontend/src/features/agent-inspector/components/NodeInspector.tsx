@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { AlertCircle, Check, CircleHelp, Plus, Route, Trash2 } from "lucide-react"
+import { AlertCircle, Check, Plus, Route, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/Button"
 import { Card } from "@/components/ui/Card"
 import { FormField } from "@/components/ui/FormField"
@@ -130,7 +130,6 @@ export function NodeInspector({ node, initialNode, validationErrors, onUpdateNod
         <Separator />
         <div><div className="mb-2 flex items-center justify-between"><div className="flex items-center gap-2 text-xs font-semibold text-[#455249]"><Route size={14} className="text-[#8b9b8f]" /> Transitions</div></div><p className="mb-3 text-[10px] leading-4 text-[#929d95]">Drag the dot on this node to connect it to another node. Configure the transition here after it exists.</p><div className="space-y-3">{node.edges.map((edge, edgeIndex) => { const transition = { source: node.name, functionName: edge.function }; return <TransitionEditor key={`${edge.function}-${edge.target}-${edgeIndex}`} source={node.name} edge={edge} edgeIndex={edgeIndex} siblingEdges={node.edges} errors={validationErrors} selected={selectedTransition?.source === transition.source && selectedTransition.functionName === transition.functionName} onSelect={() => onSelectTransition(transition)} onUpdate={(functionName, patch) => onUpdateEdge(node.name, functionName, patch)} onDelete={() => onDeleteEdge(node.name, edge.function)} /> })}{node.edges.length === 0 && <p className="text-xs text-[#8f9992]">No transitions yet. Drag the dot on this node to create one.</p>}</div></div>
         {blockingErrors.length > 0 && <div className="rounded-xl bg-[#f8eeea] p-3.5"><div className="flex gap-2"><AlertCircle size={15} className="mt-0.5 shrink-0 text-[#a16d5a]" /><div className="space-y-1">{blockingErrors.map((error) => <p className="text-[11px] leading-4 text-[#8c5947]" key={`${error.path}-${error.message}`}>{error.message}</p>)}</div></div></div>}
-        <div className="rounded-xl bg-[#f0f3ef] p-3.5"><div className="flex gap-2"><CircleHelp size={15} className="mt-0.5 shrink-0 text-[#809487]" /><p className="text-[11px] leading-4 text-[#718078]">Changes are local to this draft. Copilot proposals will use the same editor actions.</p></div></div>
       </div>
     </section>
   )

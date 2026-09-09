@@ -20,7 +20,6 @@ export function useAgentGraph() {
   const draft = history.present
   const [agents, setAgents] = useState(initialCollection.agents)
   const [activeAgentId, setActiveAgentId] = useState(initialCollection.activeAgentId)
-  const [hasPersistentCollection, setHasPersistentCollection] = useState(true)
   const [savedDraft, setSavedDraft] = useState(initialDraft)
   const [snapshots, setSnapshots] = useState(() => loadStoredSnapshots())
   const [selectedNodeName, setSelectedNodeName] = useState<string | undefined>(initialDraft.config.initial_node)
@@ -69,9 +68,6 @@ export function useAgentGraph() {
     setSelectedNodeName(node.name)
     setSelectedTransition(undefined)
   }, [apply, draft.config.nodes.length])
-  const updateNodeAndSelection = useCallback((nodeName: string, patch: Partial<AgentNode>) => {
-    updateNode(nodeName, patch)
-  }, [updateNode])
   const deleteNode = useCallback((nodeName: string) => {
     if (nodeName === draft.config.initial_node) return
 
@@ -128,7 +124,6 @@ export function useAgentGraph() {
     dispatch({ type: "replace", draft: factoryDraft })
     setSavedDraft(factoryDraft)
     persistCurrentAgent(factoryDraft)
-    setHasPersistentCollection(true)
     setSelectedNodeName(factoryDraft.config.initial_node)
     setSelectedTransition(undefined)
   }, [activeAgentId, persistCurrentAgent])
@@ -139,7 +134,6 @@ export function useAgentGraph() {
     const nextCollection = { activeAgentId: nextAgent.id, agents: [...existingAgents, nextAgent] }
     setAgents(nextCollection.agents)
     setActiveAgentId(nextAgent.id)
-    setHasPersistentCollection(true)
     saveAgentCollection(nextCollection)
     dispatch({ type: "replace", draft: nextAgent.draft })
     setSavedDraft(nextAgent.draft)
@@ -190,12 +184,11 @@ export function useAgentGraph() {
     agent: draft.config,
     agents,
     activeAgentId,
-    hasStoredDraft: hasPersistentCollection,
     draft,
     selectedNode,
     selectedNodeName,
     selectNode: setSelectedNodeName,
-    updateNode: updateNodeAndSelection,
+    updateNode,
     updateAgent,
     deleteNode,
     updateEdge,
