@@ -310,3 +310,110 @@ def test_review_call_accepts_structured_result(monkeypatch):
     review_context = json.loads(calls[0]["messages"][1]["content"])
     assert review_context["current_agent_document"]["nodes"]
     assert review_context["reference_index"]["nodes"]
+
+
+def _suggested_fix_document():
+    return {
+        "version": 1,
+        "id": "review-example",
+        "revision": 1,
+        "name": "Prosper Review Example",
+        "initial_node": "caller_request",
+        "persona": "Be concise.",
+        "voice_id": "voice",
+        "model": "model",
+        "nodes": [
+            {"id": "caller_request", "name": "caller_request", "title": "Caller Request", "type": "conversation", "end": False, "task_messages": [{"role": "developer", "content": "Ask what the caller needs."}], "edges": [{"id": "request_to_availability", "function": "book_appointment", "description": "Use for a booking request.", "target": "share_availability", "properties": {}, "required": [], "kind": "condition"}]},
+            {"id": "share_availability", "name": "share_availability", "title": "Share Availability", "type": "conversation", "end": False, "task_messages": [{"role": "developer", "content": "Offer two appointment options."}], "edges": [{"id": "availability_to_complete", "function": "finish_booking", "description": "Use after the caller chooses.", "target": "booking_complete", "properties": {}, "required": [], "kind": "condition"}]},
+            {"id": "booking_complete", "name": "booking_complete", "title": "Booking Complete", "type": "end", "end": True, "task_messages": [{"role": "developer", "content": "Confirm and end the call."}], "edges": []},
+        ],
+    }
+
+
+def _suggested_fix_request(document, is_sample=False):
+    return {
+        "document": document,
+        "baseVersion": "review-example-v1",
+        "call": {"id": "sample-1", "isSample": is_sample, "events": []},
+        "review": {"status": "needs_attention", "summary": "Availability was shared before verification.", "recommendedAction": "propose_changes", "issues": [], "reviewedAt": "2026-01-01T00:00:00Z"},
+    }
+
+
+def test_suggested_fix_prompt_contains_exact_references_and_strict_schema(monkeypatch):
+    response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps({"diagnosis": "No safe change is justified.", "operations": [], "changes": ["Keep the current graph."]})))])
+    calls = []
+
+    class FakeCompletions:
+        def create(self, **kwargs):
+            calls.append(kwargs)
+            return response
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            self.chat = SimpleNamespace(completions=FakeCompletions())
+
+    monkeypatch.setattr(control_api, "OpenAI", FakeClient)
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("OPENAI_MODEL", "gpt-5.6-luna")
+    document = _suggested_fix_document()
+
+    result = control_api.create_suggested_fix(_suggested_fix_request(document))
+
+    assert result["mode"] == "ai"
+    assert calls[0]["response_format"]["type"] == "json_schema"
+    assert calls[0]["response_format"]["json_schema"]["strict"] is True
+    assert "temperature" not in calls[0]
+    context = json.loads(calls[0]["messages"][1]["content"])
+    assert context["current_agent_document"] == document
+    assert {node["id"] for node in context["reference_index"]["nodes"]} == {"caller_request", "share_availability", "booking_complete"}
+    assert context["reference_index"]["edges"][0]["id"] == "request_to_availability"
+    assert {item["op"] for item in context["contract"]["operations"]} == {"add_node", "add_edge", "update_edge", "update_node"}
+    assert context["contract"]["max_operations"] == 6
+
+
+def test_suggested_fix_normalizes_nullable_strict_patch_fields(monkeypatch):
+    response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps({
+        "diagnosis": "Clarify the existing route.",
+        "operations": [{"op": "update_edge", "edgeId": "request_to_availability", "patch": {"target": "share_availability", "description": None, "kind": None, "properties": None, "required": None}}],
+        "changes": ["Keep the current target while the issue is reviewed."],
+    })))])
+
+    class FakeCompletions:
+        def create(self, **kwargs):
+            return response
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            self.chat = SimpleNamespace(completions=FakeCompletions())
+
+    monkeypatch.setattr(control_api, "OpenAI", FakeClient)
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("OPENAI_MODEL", "gpt-5.6-luna")
+
+    result = control_api.create_suggested_fix(_suggested_fix_request(_suggested_fix_document()))
+
+    assert result["operations"][0]["patch"] == {"target": "share_availability"}
+
+
+def test_sample_suggested_fix_falls_back_to_actual_graph_ids(monkeypatch):
+    monkeypatch.setattr(control_api, "_model_json", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("model unavailable")))
+    document = _suggested_fix_document()
+
+    result = control_api.create_suggested_fix(_suggested_fix_request(document, is_sample=True))
+
+    assert result["mode"] == "sample_fallback"
+    assert result["operations"][0]["node"]["id"] == "verify_identity"
+    assert result["operations"][1] == {"op": "update_edge", "edgeId": "request_to_availability", "patch": {"target": "verify_identity"}}
+    preview = control_api._apply_copilot_operations(document, result["operations"])
+    assert preview["nodes"][0]["edges"][0]["target"] == "verify_identity"
+
+
+def test_real_suggested_fix_rejects_unknown_edge_without_mutating(monkeypatch):
+    response = {"diagnosis": "Change the route.", "operations": [{"op": "update_edge", "edgeId": "None", "patch": {"target": "share_availability"}}], "changes": ["Change the route."]}
+    monkeypatch.setattr(control_api, "_model_json", lambda *args, **kwargs: response)
+    document = _suggested_fix_document()
+
+    with pytest.raises(RuntimeError, match="unknown"):
+        control_api.create_suggested_fix(_suggested_fix_request(document))
+
+    assert document["nodes"][0]["edges"][0]["target"] == "share_availability"
