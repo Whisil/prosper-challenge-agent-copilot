@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/Button"
 import { FormField } from "@/components/ui/FormField"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/Select"
 import { Textarea } from "@/components/ui/Textarea"
-import type { AgentDocument, AgentValidationError, CallRecord } from "@/features/agent-graph/model/type"
+import type { AgentDocument, AgentDraft, AgentValidationError, CallRecord } from "@/features/agent-graph/model/type"
 import type { XYPosition } from "@xyflow/react"
 import { createCopilotProposal } from "@/lib/agentApi"
 import { applyGraphOperations } from "../lib/operationApplier"
@@ -12,6 +12,7 @@ import type { ChangeProposal, EvidenceSource, GraphOperation, OperationPreview }
 
 interface CopilotPanelProps {
   document: AgentDocument
+  draft: AgentDraft
   draftVersion: string
   initialSource?: EvidenceSource
   autoAnalyze?: boolean
@@ -22,8 +23,8 @@ interface CopilotPanelProps {
   onProposalErrorChange: (message?: string) => void
 }
 
-function makePreview(document: AgentDocument, proposal: ChangeProposal, selected: number[]): OperationPreview {
-  return applyGraphOperations({ config: document, layout: {}, edgeHandles: {} }, proposal.operations, selected)
+function makePreview(draft: AgentDraft, proposal: ChangeProposal, selected: number[]): OperationPreview {
+  return applyGraphOperations(draft, proposal.operations, selected)
 }
 
 function humanize(value: string) {
@@ -42,7 +43,7 @@ function operationSummary(operation: GraphOperation) {
   }
 }
 
-export function CopilotPanel({ document, draftVersion, initialSource, autoAnalyze = false, onApplyOperations, onPreviewCall, onProposalLoadingChange, onPreviewChange, onProposalErrorChange }: CopilotPanelProps) {
+export function CopilotPanel({ document, draft, draftVersion, initialSource, autoAnalyze = false, onApplyOperations, onPreviewCall, onProposalLoadingChange, onPreviewChange, onProposalErrorChange }: CopilotPanelProps) {
   const [sourceKind, setSourceKind] = useState<"guideline" | "call">(initialSource?.kind ?? "guideline")
   const [sourceText, setSourceText] = useState(initialSource?.text ?? "")
   const [sourceCall, setSourceCall] = useState<CallRecord | undefined>(initialSource?.kind === "call" ? initialSource.call : undefined)
@@ -84,7 +85,7 @@ export function CopilotPanel({ document, draftVersion, initialSource, autoAnalyz
     try {
       const next = await createCopilotProposal({ document, baseVersion: draftVersion, source: { kind: source.kind, text: source.text.trim(), call: source.kind === "call" ? source.call : undefined } })
       const indices = next.operations.map((_operation, index) => index)
-      const nextPreview = makePreview(document, next, indices)
+      const nextPreview = makePreview(draft, next, indices)
       setProposal(next)
       setSelected(indices)
       if (nextPreview.errors.some((error) => error.severity === "error")) {
@@ -105,7 +106,7 @@ export function CopilotPanel({ document, draftVersion, initialSource, autoAnalyz
       setLoading(false)
       onProposalLoadingChange(false)
     }
-  }, [clearPreview, document, draftVersion, onPreviewChange, onProposalErrorChange, onProposalLoadingChange])
+  }, [clearPreview, document, draft, draftVersion, onPreviewChange, onProposalErrorChange, onProposalLoadingChange])
 
   useEffect(() => {
     if (!autoAnalyze || !initialSource) return
@@ -124,7 +125,7 @@ export function CopilotPanel({ document, draftVersion, initialSource, autoAnalyz
   }
   const rebuildPreview = (indices: number[]) => {
     if (!proposal) return
-    const next = makePreview(document, proposal, indices)
+    const next = makePreview(draft, proposal, indices)
     if (next.errors.some((error) => error.severity === "error")) {
       setNotice(next.errors.map((error) => error.message).join(" "))
       return

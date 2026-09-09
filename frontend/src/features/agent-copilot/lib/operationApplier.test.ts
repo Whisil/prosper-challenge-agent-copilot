@@ -65,4 +65,18 @@ describe("operationApplier", () => {
     expect(result.document.persona).toBe("two")
     expect(result.results[0].accepted).toBe(false)
   })
+
+  it("preserves the full draft editor metadata while adding graph content", () => {
+    const draft = createAgentDraft(document)
+    draft.layout.greeting = { x: 812, y: 244 }
+    draft.edgeHandles["greeting-ask_name-1"] = { source: "right", target: "top" }
+    const proposed = node("verify_identity")
+    proposed.edges = [{ id: "verify_to_done", function: "finish_verification", description: "Use after verification.", target: "confirm", properties: {}, required: [], kind: "condition" }]
+
+    const result = applyGraphOperation(draft, { op: "add_node", node: proposed, position: { x: 100, y: 600 } })
+
+    expect(result.draft?.layout.greeting).toEqual({ x: 812, y: 244 })
+    expect(result.draft?.edgeHandles["greeting-ask_name-1"]).toEqual({ source: "right", target: "top" })
+    expect(result.draft?.edgeHandles.verify_to_done).toEqual({ source: "bottom", target: "left" })
+  })
 })

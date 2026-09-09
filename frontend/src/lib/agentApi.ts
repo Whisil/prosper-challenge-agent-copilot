@@ -1,6 +1,7 @@
 import type { AgentDocument, TestSession } from "@/features/agent-graph/model/type"
 import type { ChangeProposal, CopilotProposalRequest, ReviewCallRequest } from "@/features/agent-copilot/model/type"
 import type { CallReview } from "@/features/agent-graph/model/type"
+import type { SuggestedFixRequest, SuggestedFixResponse } from "@/features/suggested-fix/model/type"
 
 const API_URL = import.meta.env.VITE_AGENT_API_URL || "http://127.0.0.1:8000"
 
@@ -55,4 +56,8 @@ export function createCopilotProposal(payload: CopilotProposalRequest) {
 
 export function reviewCall(payload: ReviewCallRequest) {
   return requestWithTimeout<CallReview>("/api/copilot/review-call", 20_000, { method: "POST", body: JSON.stringify(payload) })
+}
+
+export function createSuggestedFix(payload: SuggestedFixRequest) {
+  return request<SuggestedFixResponse>("/api/copilot/suggest-fix", { method: "POST", body: JSON.stringify(payload) })
 }
