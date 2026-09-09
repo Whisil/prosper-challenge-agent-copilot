@@ -35,7 +35,7 @@ from pipecat.workers.runner import WorkerRunner
 from pipecat_flows import FlowManager
 
 from agent_builder import AgentBuilder
-from control_api import active_flow_path, mark_runtime_completed, mark_runtime_connected, start_control_server
+from control_api import active_flow_path, get_test_session_document, mark_runtime_completed, mark_runtime_connected, record_runtime_event, start_control_server
 
 # Load .env next to this file, so the bot runs the same from the repo root or backend/.
 load_dotenv(Path(__file__).parent / ".env", override=True)
@@ -49,6 +49,18 @@ AGENT_FLOW = Path(__file__).parent / "example_flow.json"
 transport_params = {
     "webrtc": lambda: TransportParams(audio_in_enabled=True, audio_out_enabled=True),
 }
+
+
+def client_session_id(client) -> str | None:
+    """Read the browser-provided control session ID without trusting arbitrary runtime data."""
+    if isinstance(client, dict):
+        value = client.get("session_id") or client.get("sessionId")
+        return value if isinstance(value, str) and value else None
+    for attribute in ("session_id", "sessionId"):
+        value = getattr(client, attribute, None)
+        if isinstance(value, str) and value:
+            return value
+    return None
 
 
 async def run_bot(
@@ -97,15 +109,22 @@ async def run_bot(
 
     @transport.event_handler("on_client_connected")
     async def on_client_connected(transport, client):
-        active_builder = AgentBuilder.from_json(active_flow_path(AGENT_FLOW))
+        session_id = client_session_id(client)
+        preview_document = get_test_session_document(session_id)
+        active_builder = AgentBuilder.from_dict(preview_document) if preview_document else AgentBuilder.from_json(active_flow_path(AGENT_FLOW))
         logger.info(f"Client connected — starting '{active_builder.config.name}' at initial node")
         await flow_manager.initialize(active_builder.build_initial_node())
-        mark_runtime_connected(active_builder.config.initial_node)
+        mark_runtime_connected(active_builder.config.initial_node, session_id)
+        initial = next((node for node in active_builder.config.nodes if node.name == active_builder.config.initial_node), None)
+        if initial and initial.type == "tool":
+            record_runtime_event("tool_call", f"Mock tool called: {initial.tool.get('name', initial.name) if initial.tool else initial.name}.", session_id=session_id, node_id=initial.id or initial.name, mock=True)
+        if initial and initial.type == "transfer":
+            record_runtime_event("handoff", f"Mock handoff: {initial.transfer.get('reason', 'Transfer requested.') if initial.transfer else 'Transfer requested.'}", session_id=session_id, node_id=initial.id or initial.name, mock=True)
 
     @transport.event_handler("on_client_disconnected")
     async def on_client_disconnected(transport, client):
         logger.info("Client disconnected")
-        mark_runtime_completed()
+        mark_runtime_completed(client_session_id(client))
         await worker.cancel()
 
     runner = WorkerRunner(handle_sigint=runner_args.handle_sigint)

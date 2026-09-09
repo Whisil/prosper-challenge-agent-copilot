@@ -36,6 +36,13 @@ Documentation must be updated automatically in the same logical change whenever 
 - Do not silently change unrelated user work.
 - Preserve existing behavior unless the requested change explicitly replaces it.
 
+## FE and BE change summaries
+
+- Every implementation handoff and relevant documentation update must summarize the work in two separate short bullet sections: **Frontend** and **Backend**.
+- Keep each section concise, normally two to five bullets covering the changed behavior, contracts, and relevant tests.
+- If one side was not changed, explicitly write `- No frontend changes.` or `- No backend changes.` instead of omitting the section.
+- Do not mix frontend and backend work in the same bullet; call out the boundary or adapter when a change crosses both sides.
+
 ## Commit rules
 
 - Do not stage or commit changes automatically. Leave implementation changes in the worktree and report their status unless the user explicitly requests staging or commits.

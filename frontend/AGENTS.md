@@ -32,3 +32,4 @@ These rules supplement the repository-level `AGENTS.md`.
 - Keep React Flow-specific types and mapping logic out of general-purpose components.
 - Run `pnpm --dir frontend typecheck`, `pnpm --dir frontend lint`, `pnpm --dir frontend test`, and `pnpm --dir frontend build` before handoff when frontend code changes.
 - Update `docs/frontend-architecture.md` or `docs/development.md` whenever structure, commands, or integration behavior changes.
+- In handoffs, summarize frontend changes in a short **Frontend** bullet section and keep backend changes in a separate **Backend** section, following the repository-level rule.

@@ -146,6 +146,12 @@ export interface TestSession {
   events: TraceEvent[]
 }
 
+export interface CallRecord extends TestSession {
+  title: string
+  feedback?: string
+  isDemo?: boolean
+}
+
 export type AgentEditorAction =
   | { type: "reset"; draft: AgentDraft }
   | { type: "update_agent"; patch: AgentSettingsPatch }

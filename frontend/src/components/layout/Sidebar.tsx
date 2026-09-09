@@ -1,13 +1,20 @@
-import { Bot, ChevronLeft, ChevronRight, History, Sparkles } from "lucide-react"
+import { Bot, ChevronLeft, ChevronRight, Clock3, Sparkles } from "lucide-react"
 import { useState } from "react"
 import { cn } from "@/lib/utils"
 
+type Workspace = "agents" | "history"
+
 const navItems = [
-  { label: "Agents", icon: Bot, active: true },
-  { label: "Call insights", icon: History, active: false, planned: true },
+  { label: "Agents", icon: Bot, workspace: "agents" as const },
+  { label: "Call history", icon: Clock3, workspace: "history" as const },
 ]
 
-export function Sidebar() {
+interface SidebarProps {
+  workspace: Workspace
+  onWorkspaceChange: (workspace: Workspace) => void
+}
+
+export function Sidebar({ workspace, onWorkspaceChange }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false)
 
   return (
@@ -26,22 +33,21 @@ export function Sidebar() {
       </div>
 
       <nav className="space-y-1">
-        {navItems.map(({ label, icon: Icon, active, planned }) => (
+        {navItems.map(({ label, icon: Icon, workspace: itemWorkspace }) => (
           <button
             className={cn(
               "flex h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-medium transition-colors",
               collapsed && "justify-center px-0",
-              active ? "bg-[#e8eee9] text-[#1f3028]" : planned ? "cursor-not-allowed text-[#a4aca6]" : "text-[#7b857e] hover:bg-[#f0f3ef] hover:text-[#37413c]",
+              workspace === itemWorkspace ? "bg-[#e8eee9] text-[#1f3028]" : "text-[#7b857e] hover:bg-[#f0f3ef] hover:text-[#37413c]",
             )}
             key={label}
             type="button"
-            disabled={planned}
+            onClick={() => onWorkspaceChange(itemWorkspace)}
             aria-label={label}
-            aria-disabled={planned || undefined}
-            title={collapsed ? `${label}${planned ? " — coming soon" : ""}` : planned ? "Coming soon" : undefined}
+            title={collapsed ? label : undefined}
           >
-            <Icon size={16} strokeWidth={active ? 2.2 : 1.8} />
-            {!collapsed && <span className="flex items-center gap-2">{label}{planned && <span className="rounded-full bg-[#eef1ee] px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-[#9aa49d]">Soon</span>}</span>}
+            <Icon size={16} strokeWidth={workspace === itemWorkspace ? 2.2 : 1.8} />
+            {!collapsed && <span>{label}</span>}
           </button>
         ))}
       </nav>

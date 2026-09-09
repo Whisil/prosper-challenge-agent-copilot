@@ -1,7 +1,8 @@
 import { AlertCircle, Check, ChevronDown, TriangleAlert } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import type { AgentValidationError } from "@/features/agent-graph/model/type"
 import { groupValidationErrors, validationLocationLabel } from "@/features/agent-graph/lib/validationPresentation"
+import { useClickOutside } from "@/lib/useClickOutside"
 
 interface ValidationSummaryProps {
   errors: AgentValidationError[]
@@ -12,12 +13,14 @@ interface ValidationSummaryProps {
 
 export function ValidationSummary({ errors, isDirty, onSelectError, openRequest }: ValidationSummaryProps) {
   const [open, setOpen] = useState(false)
+  const summaryRef = useRef<HTMLDivElement>(null)
   useEffect(() => { if (openRequest) setOpen(true) }, [openRequest])
+  useClickOutside(summaryRef, () => setOpen(false), open)
   const { errors: blockingErrors, warnings } = groupValidationErrors(errors)
   const hasIssues = blockingErrors.length > 0 || warnings.length > 0
 
   return (
-    <div className="relative mt-1">
+    <div ref={summaryRef} className="relative mt-1">
       <button type="button" className="flex items-center gap-1.5 text-[11px] text-[#8f9992] hover:text-[#526a5d]" onClick={() => hasIssues && setOpen((value) => !value)} aria-expanded={open} aria-label={hasIssues ? "Show validation issues" : "Validation status"}>
         {blockingErrors.length > 0 ? <AlertCircle size={12} className="text-[#b17662]" /> : warnings.length > 0 ? <TriangleAlert size={12} className="text-[#aa8b3e]" /> : <Check size={12} className="text-[#5e876b]" />}
         {blockingErrors.length > 0 && `${blockingErrors.length} validation error${blockingErrors.length === 1 ? "" : "s"}`}

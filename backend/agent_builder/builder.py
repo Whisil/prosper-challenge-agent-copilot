@@ -115,6 +115,12 @@ class AgentBuilder:
                 from control_api import record_runtime_event
 
                 record_runtime_event("transition", f"Transitioned via {edge.function}.", edge_id=edge.id, target=edge.target)
+                target_node = self._nodes_by_name[edge.target]
+                record_runtime_event("node_entered", f"Entered {target_node.title or target_node.name}.", node_id=target_node.id or target_node.name)
+                if target_node.type == "tool":
+                    record_runtime_event("tool_call", f"Mock tool called: {target_node.tool.get('name', target_node.name) if target_node.tool else target_node.name}.", node_id=target_node.id or target_node.name, mock=True)
+                if target_node.type == "transfer":
+                    record_runtime_event("handoff", f"Mock handoff: {target_node.transfer.get('reason', 'Transfer requested.') if target_node.transfer else 'Transfer requested.'}", node_id=target_node.id or target_node.name, mock=True)
             except ImportError:
                 pass
             next_node = self._make_node(self._nodes_by_name[edge.target])

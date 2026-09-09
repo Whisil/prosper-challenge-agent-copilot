@@ -2,17 +2,21 @@ import { useCallback, useEffect, useMemo, useReducer, useState } from "react"
 import { exampleAgent } from "../data/exampleAgent"
 import { createAgentDraft, createCanvasTransition } from "../lib/agentOperations"
 import { createDraftHistory, reduceDraftHistory } from "../lib/history"
-import { loadStoredDraft, saveStoredDraft } from "../lib/draftPersistence"
+import { loadStoredDraft, loadStoredSnapshots, saveStoredDraft } from "../lib/draftPersistence"
 import { validateAgentConfig } from "../lib/validateAgent"
 import type { AgentConfig, AgentEdge, AgentEditorAction, AgentNode, ConnectionInteractionState, NodeCreationInput, NodeCreationKind, TransitionReference } from "../model/type"
 import { defaultNodePosition } from "../lib/graphLayout"
 import { humanizeIdentifier, toIdentifier } from "../lib/identifier"
+import { applyGraphOperations } from "@/features/agent-copilot/lib/operationApplier"
+import type { GraphOperation } from "@/features/agent-copilot/model/type"
 
 export function useAgentGraph() {
-  const initialDraft = useMemo(() => loadStoredDraft() ?? createAgentDraft(exampleAgent), [])
+  const storedDraft = useMemo(() => loadStoredDraft(), [])
+  const initialDraft = useMemo(() => storedDraft ?? createAgentDraft(exampleAgent), [storedDraft])
   const [history, dispatch] = useReducer(reduceDraftHistory, initialDraft, createDraftHistory)
   const draft = history.present
   const [savedDraft, setSavedDraft] = useState(initialDraft)
+  const [snapshots, setSnapshots] = useState(() => loadStoredSnapshots())
   const [selectedNodeName, setSelectedNodeName] = useState<string | undefined>(initialDraft.config.initial_node)
   const [selectedTransition, setSelectedTransition] = useState<TransitionReference>()
   const [connectionInteraction, setConnectionInteraction] = useState<ConnectionInteractionState>({ mode: "idle" })
@@ -110,10 +114,17 @@ export function useAgentGraph() {
     setSelectedNodeName(factoryDraft.config.initial_node)
     setSelectedTransition(undefined)
   }, [])
+  const createAgent = useCallback((config: AgentConfig) => {
+    const nextDraft = createAgentDraft(config)
+    dispatch({ type: "replace", draft: nextDraft })
+    setSelectedNodeName(nextDraft.config.initial_node)
+    setSelectedTransition(undefined)
+  }, [])
   const saveDraft = useCallback(() => {
     const nextDraft = { ...draft, config: { ...draft.config, revision: draft.config.revision + 1 } }
     dispatch({ type: "replace", draft: nextDraft })
     saveStoredDraft(nextDraft)
+    setSnapshots(loadStoredSnapshots())
     setSavedDraft(nextDraft)
   }, [draft])
   const loadDraft = useCallback((nextDraft: typeof draft) => {
@@ -122,9 +133,19 @@ export function useAgentGraph() {
     setSelectedNodeName(nextDraft.config.initial_node)
     setSelectedTransition(undefined)
   }, [])
+  const restoreSnapshot = useCallback((snapshot: typeof draft) => {
+    loadDraft(snapshot)
+  }, [loadDraft])
+  const applyCopilotOperations = useCallback((operations: GraphOperation[], acceptedIndices?: number[]) => {
+    const preview = applyGraphOperations(draft, operations, acceptedIndices)
+    if (preview.errors.some((error) => error.severity === "error")) return preview
+    dispatch({ type: "replace", draft: { config: preview.document, layout: preview.layout } })
+    return preview
+  }, [draft])
 
   return {
     agent: draft.config,
+    hasStoredDraft: Boolean(storedDraft),
     draft,
     selectedNode,
     selectedNodeName,
@@ -144,8 +165,12 @@ export function useAgentGraph() {
     startConnection,
     cancelConnection,
     resetDraft,
+    createAgent,
     saveDraft,
     loadDraft,
+    applyCopilotOperations,
+    snapshots,
+    restoreSnapshot,
     undo: () => dispatch({ type: "undo" }),
     redo: () => dispatch({ type: "redo" }),
     canUndo: history.past.length > 0,
