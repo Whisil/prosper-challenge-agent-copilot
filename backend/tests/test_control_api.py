@@ -18,6 +18,62 @@ def test_runtime_events_use_the_explicit_session_id():
     assert control_api._sessions["two"]["events"] == []
 
 
+def test_runtime_transcript_is_bounded_and_keeps_session_isolated():
+    control_api._sessions.clear()
+    control_api._sessions["one"] = {"id": "one", "status": "connected", "events": [], "transcript": []}
+    control_api._sessions["two"] = {"id": "two", "status": "connected", "events": [], "transcript": []}
+
+    control_api.record_runtime_transcript("user", "Hello", session_id="one", timestamp="2026-01-01T00:00:00Z")
+    control_api.record_runtime_transcript("assistant", "Hi", session_id="one")
+    control_api.record_runtime_transcript("user", "Wrong session", session_id="two")
+
+    assert [turn["text"] for turn in control_api._sessions["one"]["transcript"]] == ["Hello", "Hi"]
+    assert [turn["text"] for turn in control_api._sessions["two"]["transcript"]] == ["Wrong session"]
+
+    control_api._sessions["one"]["transcript"] = []
+    control_api.record_runtime_transcript("user", "x" * control_api.MAX_TRANSCRIPT_CHARS, session_id="one")
+    control_api.record_runtime_transcript("user", "overflow", session_id="one")
+    assert len(control_api._sessions["one"]["transcript"]) == 1
+    assert len(control_api._sessions["one"]["transcript"][0]["text"]) == control_api.MAX_TRANSCRIPT_CHARS
+    assert control_api._sessions["one"]["transcriptTruncated"] is True
+
+
+def test_runtime_transcript_normalizes_pipecat_content_parts():
+    control_api._sessions.clear()
+    control_api._sessions["one"] = {"id": "one", "status": "connected", "events": [], "transcript": []}
+
+    control_api.record_runtime_transcript("assistant", [{"text": "Tomorrow"}, {"content": " at 10."}], session_id="one")
+
+    assert control_api._sessions["one"]["transcript"][0]["text"] == "Tomorrow at 10."
+
+
+def test_runtime_transcript_uses_active_session_when_transport_has_no_session_id():
+    control_api._sessions.clear()
+    control_api._runtime_session_id = "one"
+    control_api._sessions["one"] = {"id": "one", "status": "connected", "events": [], "transcript": []}
+
+    control_api.record_runtime_transcript("user", "I want Wednesday.")
+
+    assert control_api._sessions["one"]["transcript"][0]["text"] == "I want Wednesday."
+
+
+def test_context_transcript_recovers_turns_without_duplicates():
+    control_api._sessions.clear()
+    control_api._runtime_session_id = "one"
+    control_api._sessions["one"] = {"id": "one", "status": "connected", "events": [], "transcript": [{"role": "user", "text": "Hello"}]}
+
+    control_api.record_runtime_context_transcript([
+        {"role": "user", "content": "Hello"},
+        {"role": "assistant", "content": "How can I help?"},
+    ])
+    control_api.record_runtime_context_transcript([
+        {"role": "user", "content": "Hello"},
+        {"role": "assistant", "content": "How can I help?"},
+    ])
+
+    assert [turn["text"] for turn in control_api._sessions["one"]["transcript"]] == ["Hello", "How can I help?"]
+
+
 def test_mark_runtime_completed_is_idempotent_for_the_explicit_session():
     control_api._sessions.clear()
     control_api._sessions["one"] = {"id": "one", "status": "connected", "events": []}
@@ -29,6 +85,36 @@ def test_mark_runtime_completed_is_idempotent_for_the_explicit_session():
     assert [event["kind"] for event in control_api._sessions["one"]["events"]] == ["ended"]
     assert control_api._sessions["one"]["events"][0]["payload"]["isTerminal"] is True
     assert control_api._sessions["one"]["events"][0]["nodeId"] == "complete"
+
+
+def test_runtime_review_flags_a_successful_tool_without_a_success_transition():
+    document = {
+        "name": "Review", "initial_node": "tool", "persona": "Review.",
+        "nodes": [
+            {"id": "tool", "name": "tool", "title": "Book", "type": "tool", "task_messages": [{"role": "developer", "content": "Book."}], "tool": {"name": "book", "description": "Book", "confirmationRequired": False}, "edges": [{"id": "booking_to_complete", "function": "booking_success", "description": "Success.", "target": "done", "properties": {}, "required": [], "kind": "success"}]},
+            {"id": "done", "name": "done", "title": "Done", "type": "end", "end": True, "task_messages": [{"role": "developer", "content": "Done."}], "edges": []},
+        ],
+    }
+    issues = control_api._runtime_review_issues({"events": [{"kind": "tool_call", "nodeId": "tool", "payload": {"result": {"booked": True}}}, {"kind": "ended", "payload": {}}]}, document)
+
+    assert issues[0]["resolutionType"] == "runtime_defect"
+    assert issues[0]["edgeId"] == "booking_to_complete"
+
+
+def test_runtime_defect_review_does_not_depend_on_the_ai_client(monkeypatch):
+    document = {
+        "name": "Review", "initial_node": "tool", "persona": "Review.",
+        "nodes": [
+            {"id": "tool", "name": "tool", "title": "Book", "type": "tool", "task_messages": [{"role": "developer", "content": "Book."}], "tool": {"name": "book", "description": "Book", "confirmationRequired": False}, "edges": [{"id": "booking_to_complete", "function": "booking_success", "description": "Success.", "target": "done", "properties": {}, "required": [], "kind": "success"}]},
+            {"id": "done", "name": "done", "title": "Done", "type": "end", "end": True, "task_messages": [{"role": "developer", "content": "Done."}], "edges": []},
+        ],
+    }
+    monkeypatch.setattr(control_api, "_model_json", lambda *args, **kwargs: pytest.fail("AI review should not run for a deterministic runtime defect"))
+
+    review = control_api.review_call({"document": document, "baseVersion": "v1", "call": {"id": "call", "events": [{"kind": "tool_call", "nodeId": "tool", "payload": {"result": {"booked": True}}}, {"kind": "ended", "payload": {}}]}})
+
+    assert review["recommendedAction"] == "report_development"
+    assert review["issues"][0]["resolutionType"] == "runtime_defect"
 
 
 def test_terminal_initial_node_entry_is_marked_as_terminal_evidence():
@@ -95,6 +181,64 @@ def test_copilot_proposal_accepts_a_structured_no_change_response(monkeypatch):
     assert request_context["current_agent_document"] == document
     assert {item["op"] for item in request_context["contract"]["operations"]} == set(control_api.ALLOWED_OPERATION_FIELDS)
     assert request_context["contract"]["stable_reference_fields"]["edgeId"]
+
+
+def test_call_review_prompt_contains_transcript_checklist_and_validates_turn_references(monkeypatch):
+    document = json.loads((Path(__file__).parents[1] / "example_flow.json").read_text())
+    call = {
+        "id": "call-1",
+        "status": "completed",
+        "events": [],
+        "transcript": [{"id": "turn-1", "role": "user", "text": "It is like water.", "timestamp": "2026-01-01T00:00:00Z"}],
+    }
+    model_payload = {
+        "status": "needs_attention",
+        "summary": "Verification was unclear.",
+        "issues": [{
+            "title": "Unclear verification",
+            "explanation": "The caller did not provide the required value.",
+            "severity": "high",
+            "nodeId": "collect_details",
+            "edgeId": None,
+            "evidenceTurnIds": ["turn-1"],
+            "observedBehavior": "The caller gave a nonsensical verification answer.",
+            "expectedBehavior": "Ask for the exact verification information and stop if it is not provided.",
+        }],
+        "evidenceQuality": "trace_and_transcript",
+        "recommendedAction": "propose_changes",
+    }
+    response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(model_payload)))])
+    calls = []
+
+    class FakeCompletions:
+        def create(self, **kwargs):
+            calls.append(kwargs)
+            return response
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            self.chat = SimpleNamespace(completions=FakeCompletions())
+
+    monkeypatch.setattr(control_api, "OpenAI", FakeClient)
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("OPENAI_MODEL", "gpt-5.6-luna")
+
+    review = control_api.review_call({"document": document, "baseVersion": "v1", "call": call})
+
+    assert review["issues"][0]["evidenceTurnIds"] == ["turn-1"]
+    assert "verification" in calls[0]["messages"][0]["content"].lower()
+    request_context = json.loads(calls[0]["messages"][1]["content"])
+    assert request_context["evidence"]["call"]["transcript"][0]["text"] == "It is like water."
+
+
+def test_call_review_rejects_unknown_evidence_turn(monkeypatch):
+    document = json.loads((Path(__file__).parents[1] / "example_flow.json").read_text())
+    call = {"id": "call-1", "status": "completed", "events": [], "transcript": [{"id": "turn-1", "role": "user", "text": "Hello"}]}
+    response = {"status": "needs_attention", "summary": "Issue", "issues": [{"title": "Issue", "explanation": "Evidence", "severity": "low", "nodeId": None, "edgeId": None, "evidenceTurnIds": ["missing"], "observedBehavior": "Observed", "expectedBehavior": "Expected"}], "evidenceQuality": "trace_and_transcript", "recommendedAction": "no_change"}
+
+    monkeypatch.setattr(control_api, "_model_json", lambda *args, **kwargs: response)
+    with pytest.raises(ValueError, match="evidenceTurnIds"):
+        control_api.review_call({"document": document, "baseVersion": "v1", "call": call})
 
 
 def test_proposal_schema_closes_objects_and_requires_non_null_references():
@@ -375,6 +519,28 @@ def test_review_call_accepts_structured_result(monkeypatch):
     review_context = json.loads(calls[0]["messages"][1]["content"])
     assert review_context["current_agent_document"]["nodes"]
     assert review_context["reference_index"]["nodes"]
+
+
+def test_trace_only_pass_is_reported_as_unavailable(monkeypatch):
+    response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps({
+        "status": "passed", "summary": "The path completed.", "issues": [], "recommendedAction": "no_change", "evidenceQuality": "trace_only",
+    })))] )
+
+    class FakeCompletions:
+        def create(self, **kwargs):
+            return response
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            self.chat = SimpleNamespace(completions=FakeCompletions())
+
+    monkeypatch.setattr(control_api, "OpenAI", FakeClient)
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("OPENAI_MODEL", "gpt-5.6-luna")
+    result = control_api.review_call({"document": json.loads((Path(__file__).parents[1] / "example_flow.json").read_text()), "baseVersion": "v1", "call": {"id": "call-1", "events": []}})
+
+    assert result["status"] == "unavailable"
+    assert result["error"] == "Conversation transcript was not captured for this call."
 
 
 def _suggested_fix_document():

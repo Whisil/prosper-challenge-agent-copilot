@@ -19,6 +19,51 @@ from pipecat_flows import FlowManager, FlowsFunctionSchema, NodeConfig
 from .schema import AgentConfig, Edge, Node
 
 
+def _validate_edge_arguments(edge: Edge, args: dict) -> None:
+    """Keep function-call arguments inside the transition's declared contract."""
+    if not isinstance(args, dict):
+        raise ValueError(f"Transition '{edge.function}' received invalid arguments.")
+    for field in edge.required:
+        if field not in args:
+            raise ValueError(f"Transition '{edge.function}' requires '{field}'.")
+    for name, value in args.items():
+        prop = edge.properties.get(name)
+        if not prop:
+            raise ValueError(f"Transition '{edge.function}' received unsupported field '{name}'.")
+        expected = prop.get("type")
+        valid_type = {
+            "string": isinstance(value, str),
+            "number": isinstance(value, (int, float)) and not isinstance(value, bool),
+            "integer": isinstance(value, int) and not isinstance(value, bool),
+            "boolean": isinstance(value, bool),
+        }.get(expected, False)
+        if not valid_type:
+            raise ValueError(f"Transition '{edge.function}' field '{name}' must be a {expected}.")
+        if prop.get("enum") and value not in prop["enum"]:
+            allowed = ", ".join(str(item) for item in prop["enum"])
+            raise ValueError(f"Transition '{edge.function}' field '{name}' must be one of: {allowed}.")
+
+
+def _confirmed(value: object) -> bool:
+    return isinstance(value, str) and value.strip().lower() in {"yes", "y", "confirm", "confirmed", "i confirm"}
+
+
+def _validate_runtime_guard(source_node: Node, target_node: Node, edge: Edge, state: dict, args: dict) -> None:
+    state_with_arguments = {**state, **args}
+    if target_node.type == "tool" and target_node.tool and target_node.tool.get("confirmationRequired"):
+        confirmation = state_with_arguments.get("explicit_confirmation") or state_with_arguments.get("confirmation")
+        if not _confirmed(confirmation):
+            raise ValueError(f"The {target_node.tool.get('name', target_node.name)} action requires explicit confirmation before it can run.")
+    if source_node.type == "tool" and edge.kind == "success":
+        result = state.get("last_tool_result")
+        if isinstance(result, dict) and any(result.get(key) is False for key in ("success", "booked", "available")):
+            raise ValueError(f"The {source_node.tool.get('name', source_node.name) if source_node.tool else source_node.name} action reported failure and cannot use a success transition.")
+    if source_node.type == "tool" and edge.kind == "failure":
+        result = state.get("last_tool_result")
+        if isinstance(result, dict) and any(result.get(key) is True for key in ("success", "booked", "available")):
+            raise ValueError(f"The {source_node.tool.get('name', source_node.name) if source_node.tool else source_node.name} action reported success and cannot use a failure transition.")
+
+
 class AgentBuilder:
     """Builds a runnable Pipecat Flows graph from a declarative AgentConfig."""
 
@@ -59,8 +104,10 @@ class AgentBuilder:
                 raise ValueError(f"Node '{node.name}' has unsupported type '{node_type}'.")
             if node_type in {"end", "transfer"} and node.edges:
                 raise ValueError(f"Terminal node '{node.name}' cannot have outgoing edges.")
-            if node_type == "tool" and not node.tool:
-                raise ValueError(f"Tool node '{node.name}' needs a tool definition.")
+            if not node.task_messages or any(not isinstance(message, dict) or not isinstance(message.get("content"), str) or not message["content"].strip() for message in node.task_messages):
+                raise ValueError(f"Node '{node.name}' needs non-empty task instructions.")
+            if node_type == "tool" and (not node.tool or not isinstance(node.tool.get("name"), str) or not node.tool["name"].strip() or not isinstance(node.tool.get("description"), str) or not node.tool["description"].strip()):
+                raise ValueError(f"Tool node '{node.name}' needs a name and description.")
             if node_type == "tool" and "confirmationRequired" not in node.tool:
                 raise ValueError(f"Tool node '{node.name}' needs confirmation metadata.")
             if node_type == "transfer" and not (node.transfer or {}).get("reason"):
@@ -87,6 +134,15 @@ class AgentBuilder:
                         f"Edge '{edge.function}' in node '{node.name}' targets "
                         f"unknown node '{edge.target}'."
                     )
+                if not isinstance(edge.properties, dict) or not isinstance(edge.required, list):
+                    raise ValueError(f"Transition '{edge.function}' must define properties and required fields.")
+                if any(not isinstance(name, str) or not name.strip() or not isinstance(prop, dict) or prop.get("type") not in {"string", "number", "integer", "boolean"} or not isinstance(prop.get("description"), str) or not prop["description"].strip() for name, prop in edge.properties.items()):
+                    raise ValueError(f"Transition '{edge.function}' contains an invalid property definition.")
+                if any(not isinstance(prop.get("enum"), list) or not prop["enum"] or not all(isinstance(value, str) for value in prop["enum"])
+                       for prop in edge.properties.values() if isinstance(prop, dict) and "enum" in prop):
+                    raise ValueError(f"Transition '{edge.function}' contains an invalid enum definition.")
+                if any(not isinstance(name, str) or name not in edge.properties for name in edge.required):
+                    raise ValueError(f"Transition '{edge.function}' required fields must match property keys.")
 
     # ---- compilation -------------------------------------------------------
     def build_initial_node(self) -> NodeConfig:
@@ -109,26 +165,57 @@ class AgentBuilder:
             node_config["post_actions"] = [{"type": "end_conversation"}]
         return node_config
 
+    def _record_transition(self, source: Node, edge: Edge, target: Node, args: dict) -> None:
+        from control_api import mark_runtime_completed, record_runtime_event
+
+        record_runtime_event("transition", f"The caller moved from {source.title or source.name} to {target.title or target.name}.", session_id=self.runtime_session_id, node_id=source.id or source.name, edge_id=edge.id, sourceNodeId=source.id or source.name, edgeId=edge.id, target=edge.target, sourceTitle=source.title or source.name, transitionName=edge.function, targetNodeId=target.id or target.name, targetTitle=target.title or target.name, collectedFields=args)
+        record_runtime_event("node_entered", f"The agent moved to {target.title or target.name}.", session_id=self.runtime_session_id, node_id=target.id or target.name, nodeTitle=target.title or target.name, nodeType=target.type or ("end" if target.end else "conversation"), isEntry=False, isTerminal=target.end, explanation=(target.task_messages[0].get("content", "") if target.task_messages and isinstance(target.task_messages[0], dict) else "The agent continued the workflow."))
+        if target.type == "transfer":
+            record_runtime_event("handoff", f"The caller was handed to staff: {target.transfer.get('reason', 'Transfer requested.') if target.transfer else 'Transfer requested.'}", session_id=self.runtime_session_id, node_id=target.id or target.name, nodeTitle=target.title or target.name, reason=target.transfer.get('reason') if target.transfer else None, mock=True)
+        if target.end:
+            mark_runtime_completed(self.runtime_session_id, f"The workflow reached {target.title or target.name}.", target.id or target.name, target.title or target.name, target.type or ("end" if target.end else "conversation"))
+
     def _make_edge_function(self, source_node: Node, edge: Edge) -> FlowsFunctionSchema:
         async def handler(args: dict, flow_manager: FlowManager):
+            try:
+                _validate_edge_arguments(edge, args)
+                target_node = self._nodes_by_name[edge.target]
+                _validate_runtime_guard(source_node, target_node, edge, flow_manager.state, args)
+            except ValueError as error:
+                try:
+                    from control_api import record_runtime_event
+
+                    record_runtime_event(
+                        "validation_failed",
+                        str(error),
+                        session_id=self.runtime_session_id,
+                        node_id=source_node.id or source_node.name,
+                        edge_id=edge.id,
+                        nodeTitle=source_node.title or source_node.name,
+                    )
+                except ImportError:
+                    pass
+                raise
             # Persist what the caller gave us so later nodes can use it.
             flow_manager.state.update(args)
             logger.info(f"[{edge.function}] -> {edge.target} | collected: {args}")
-            try:
-                from control_api import mark_runtime_completed, record_runtime_event
+            self._record_transition(source_node, edge, target_node, args)
+            if target_node.type == "tool":
+                from control_api import mark_runtime_failed, record_runtime_event
 
-                target_node = self._nodes_by_name[edge.target]
-                record_runtime_event("transition", f"The caller moved from {source_node.title or source_node.name} to {target_node.title or target_node.name}.", session_id=self.runtime_session_id, node_id=source_node.id or source_node.name, edge_id=edge.id, sourceNodeId=source_node.id or source_node.name, edgeId=edge.id, target=edge.target, sourceTitle=source_node.title or source_node.name, transitionName=edge.function, targetNodeId=target_node.id or target_node.name, targetTitle=target_node.title or target_node.name, collectedFields=args)
-                record_runtime_event("node_entered", f"The agent moved to {target_node.title or target_node.name}.", session_id=self.runtime_session_id, node_id=target_node.id or target_node.name, nodeTitle=target_node.title or target_node.name, nodeType=target_node.type or ("end" if target_node.end else "conversation"), isEntry=False, isTerminal=target_node.end, explanation=(target_node.task_messages[0].get("content", "") if target_node.task_messages and isinstance(target_node.task_messages[0], dict) else "The agent continued the workflow."))
-                if target_node.type == "tool":
-                    record_runtime_event("tool_call", f"The mock action {target_node.tool.get('name', target_node.name) if target_node.tool else target_node.name} ran.", session_id=self.runtime_session_id, node_id=target_node.id or target_node.name, nodeTitle=target_node.title or target_node.name, toolName=target_node.tool.get('name', target_node.name) if target_node.tool else target_node.name, mock=True, result=target_node.tool.get('mockResult') if target_node.tool else None)
-                if target_node.type == "transfer":
-                    record_runtime_event("handoff", f"The caller was handed to staff: {target_node.transfer.get('reason', 'Transfer requested.') if target_node.transfer else 'Transfer requested.'}", session_id=self.runtime_session_id, node_id=target_node.id or target_node.name, nodeTitle=target_node.title or target_node.name, reason=target_node.transfer.get('reason') if target_node.transfer else None, mock=True)
-                if target_node.end:
-                    mark_runtime_completed(self.runtime_session_id, f"The workflow reached {target_node.title or target_node.name}.", target_node.id or target_node.name, target_node.title or target_node.name)
-            except ImportError:
-                pass
-            next_node = self._make_node(self._nodes_by_name[edge.target])
+                result = target_node.tool.get("mockResult") if target_node.tool else {}
+                flow_manager.state["last_tool_result"] = result
+                record_runtime_event("tool_call", f"The mock action {target_node.tool.get('name', target_node.name) if target_node.tool else target_node.name} ran.", session_id=self.runtime_session_id, node_id=target_node.id or target_node.name, nodeTitle=target_node.title or target_node.name, toolName=target_node.tool.get('name', target_node.name) if target_node.tool else target_node.name, mock=True, inputs=args, result=result)
+                succeeded = not isinstance(result, dict) or not any(result.get(key) is False for key in ("success", "booked", "available"))
+                outcome = next((candidate for candidate in target_node.edges if candidate.kind == ("success" if succeeded else "failure")), None)
+                if not outcome:
+                    message = f"The mock tool '{target_node.title or target_node.name}' returned {'success' if succeeded else 'failure'} without a matching transition."
+                    record_runtime_event("runtime_defect", message, session_id=self.runtime_session_id, node_id=target_node.id or target_node.name)
+                    mark_runtime_failed(self.runtime_session_id, message, target_node.id or target_node.name)
+                    raise ValueError(message)
+                target_node = self._nodes_by_name[outcome.target]
+                self._record_transition(self._nodes_by_name[edge.target], outcome, target_node, {})
+            next_node = self._make_node(target_node)
             return {"status": "success", **args}, next_node
 
         return FlowsFunctionSchema(

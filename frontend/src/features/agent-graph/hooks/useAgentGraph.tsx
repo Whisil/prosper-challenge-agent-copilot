@@ -117,7 +117,7 @@ export function useAgentGraph() {
     setAgents(nextCollection.agents)
     saveAgentCollection(nextCollection)
     return nextCollection
-  }, [activeAgentId, agents, draft])
+  }, [activeAgentId, agents])
   const createAgent = useCallback((config: AgentConfig) => {
     const nextAgent = createStoredAgent(config)
     const currentAgent = { id: activeAgentId, draft, updatedAt: new Date().toISOString() }
@@ -162,7 +162,7 @@ export function useAgentGraph() {
     setSnapshots([])
     setSelectedNodeName(target.draft.config.initial_node)
     setSelectedTransition(undefined)
-  }, [activeAgentId, agents])
+  }, [activeAgentId, agents, draft])
   const saveDraft = useCallback(() => {
     const nextDraft = { ...draft, config: { ...draft.config, revision: draft.config.revision + 1 } }
     dispatch({ type: "replace", draft: nextDraft })

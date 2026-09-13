@@ -39,8 +39,32 @@ describe("agent collection", () => {
     expect(ensureShowcaseAgent(collection).agents).toHaveLength(1)
   })
 
+  it("removes the old task-queue graph from built-in agents", () => {
+    const legacy = createStoredAgent({
+      ...reviewExampleAgent,
+      nodes: [...reviewExampleAgent.nodes, { name: "task_check", task_messages: [{ role: "developer", content: "Check tasks." }], edges: [] }],
+    })
+
+    const migrated = ensureDefaultAgents({ activeAgentId: legacy.id, agents: [legacy] }).agents.find((agent) => agent.id === legacy.id)
+
+    expect(migrated?.draft.config.nodes.some((node) => node.name === "task_check")).toBe(false)
+    expect(migrated?.draft.config.nodes.map((node) => node.name)).toEqual(reviewExampleAgent.nodes.map((node) => node.name))
+  })
+
   it("adds the simple review agent alongside the showcase", () => {
     const collection = ensureDefaultAgents(createAgentCollection(showcaseAgent))
     expect(collection.agents.map((agent) => agent.draft.config.name)).toEqual([showcaseAgent.name, reviewExampleAgent.name])
+  })
+
+  it("adds the allowed appointment values to an older built-in review agent", () => {
+    const legacy = createStoredAgent(reviewExampleAgent)
+    const edge = legacy.draft.config.nodes.find((node) => node.name === "share_availability")?.edges[0]
+    if (edge) {
+      edge.properties = {}
+      edge.required = []
+    }
+
+    const migrated = ensureDefaultAgents({ activeAgentId: legacy.id, agents: [legacy] }).agents.find((agent) => agent.id === legacy.id)
+    expect(migrated?.draft.config.nodes.find((node) => node.name === "share_availability")?.edges[0]).toMatchObject({ required: ["selected_time"], properties: { selected_time: { enum: ["Tomorrow at 10:00 AM", "Next Monday at 2:00 PM"] } } })
   })
 })

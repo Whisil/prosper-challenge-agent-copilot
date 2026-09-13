@@ -17,6 +17,7 @@ function decisionForReview(review: CallReview | undefined): ImprovementRecord["d
   if (!review) return "unreviewed"
   if (review.resolution === "resolved") return "accepted"
   if (review.status === "passed") return "no_change"
+  if (review.status === "unavailable") return "unreviewed"
   return "unreviewed"
 }
 
@@ -101,7 +102,7 @@ export function updateImprovementReview(call: CallRecord, agents: StoredAgent[],
 }
 
 export function historicalContextForAgent(records: ImprovementRecord[], agentId: string, excludeCallId?: string) {
-  return { agentId, records: records.filter((record) => record.agentId === agentId && record.callId !== excludeCallId).slice(0, MAX_IMPROVEMENT_RECORDS).map((record) => clone(record)) }
+  return { agentId, records: records.filter((record) => record.agentId === agentId && record.callId !== excludeCallId && record.reviewStatus !== "unavailable" && record.reviewStatus !== "pending").slice(0, MAX_IMPROVEMENT_RECORDS).map((record) => clone(record)) }
 }
 
 function edgeById(document: AgentDocument, id: string): { source: AgentNode; edge: AgentNode["edges"][number] } | undefined {

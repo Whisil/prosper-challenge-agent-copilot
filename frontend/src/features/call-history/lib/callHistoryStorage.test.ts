@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { createStoredAgent } from "@/features/agent-graph/lib/agentCollection"
 import { exampleAgent } from "@/features/agent-graph/data/exampleAgent"
-import { completedFromTerminalEvidence, hasTerminalEvidence, loadCallHistory, resolveCallReview, resolveTransitionDisplayName, sampleCall, summarizeTraceEvent, updateCallReview } from "./callHistoryStorage"
+import { completedFromTerminalEvidence, hasTerminalEvidence, loadCallHistory, reportDeveloperIssue, resolveCallReview, resolveTransitionDisplayName, sampleCall, summarizeTraceEvent, updateCallReview } from "./callHistoryStorage"
 
 describe("call history storage", () => {
   afterEach(() => vi.unstubAllGlobals())
@@ -27,6 +27,12 @@ describe("call history storage", () => {
     expect(updateCallReview(sampleCall.id, review)[0].review?.summary).toBe("No issue found.")
   })
 
+  it("keeps unavailable reviews in an unavailable lifecycle state", () => {
+    const review = { status: "unavailable" as const, summary: "The backend timed out.", issues: [], recommendedAction: "no_change" as const, reviewedAt: new Date().toISOString(), error: "Request timed out." }
+
+    expect(updateCallReview(sampleCall.id, review)[0].reviewState).toBe("unavailable")
+  })
+
   it("marks the source review resolved after an accepted fix", () => {
     const records = resolveCallReview(sampleCall.id)
 
@@ -39,6 +45,29 @@ describe("call history storage", () => {
 
     expect(resolveTransitionDisplayName(event)).toBe("New Transition 2")
     expect(summarizeTraceEvent(event).detail).toContain("Collect Details")
+  })
+
+  it("keeps transcript evidence separate from the runtime trace", () => {
+    expect(sampleCall.transcript).toHaveLength(2)
+    expect(sampleCall.events.some((event) => event.kind === "transition")).toBe(true)
+    expect(sampleCall.transcript?.[0]).toMatchObject({ role: "user", text: expect.any(String) })
+  })
+
+  it("explains a blocked runtime transition", () => {
+    const summary = summarizeTraceEvent({ timestamp: "2026-01-01T10:00:00.000Z", kind: "validation_failed", nodeId: "verify_identity", message: "Transition 'verification_passed' field 'verification_status' must be one of: verified." })
+
+    expect(summary.title).toBe("A step was blocked")
+    expect(summary.detail).toContain("verification_status")
+  })
+
+  it("summarizes runtime-defect evidence for a call", () => {
+    expect(summarizeTraceEvent({ timestamp: "2026-01-01T10:00:00.000Z", kind: "runtime_defect", message: "Success route was missing." }).title).toBe("Runtime issue detected")
+  })
+
+  it("stores a developer report only on the originating call", () => {
+    const records = reportDeveloperIssue(sampleCall.id, "The tool did not continue after success.")
+
+    expect(records[0].developerReport).toMatchObject({ summary: "The tool did not continue after success.", sessionId: sampleCall.id })
   })
 
   it("associates older calls with a matching stored agent", () => {

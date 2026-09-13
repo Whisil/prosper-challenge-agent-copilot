@@ -35,8 +35,8 @@ export const reviewExampleAgent: AgentConfig = {
     },
     {
       id: "share_availability", name: "share_availability", title: "Share Availability", type: "conversation",
-      task_messages: [{ role: "developer", content: "Offer two short appointment options." }],
-      edges: [{ id: "availability_to_complete", function: "finish_booking", description: "Use after the caller chooses an appointment.", target: "booking_complete", properties: {}, required: [], kind: "condition" }],
+      task_messages: [{ role: "developer", content: "Offer two short options: tomorrow at ten in the morning, or next Monday at two in the afternoon." }],
+      edges: [{ id: "availability_to_complete", function: "finish_booking", description: "Use after the caller chooses one of the offered appointments.", target: "booking_complete", properties: { selected_time: { type: "string", description: "The appointment option the caller chose.", enum: ["Tomorrow at 10:00 AM", "Next Monday at 2:00 PM"] } }, required: ["selected_time"], kind: "condition" }],
     },
     {
       id: "booking_complete", name: "booking_complete", title: "Booking Complete", type: "end", end: true,
@@ -56,7 +56,7 @@ export const showcaseAgent: AgentConfig = {
       id: "caller_request", name: "caller_request", title: "Caller Request", type: "conversation",
       task_messages: [{ role: "developer", content: "Ask what the caller needs: book, reschedule, cancel, speak to staff, or report an urgent concern." }],
       edges: [
-        { id: "request_to_availability", function: "book_appointment", description: "Use when the caller wants to book. This route intentionally demonstrates availability before verification.", target: "share_availability", properties: {}, required: [], kind: "condition" },
+        { id: "request_to_availability", function: "book_appointment", description: "Use when the caller wants to book and move into appointment details.", target: "collect_details", properties: {}, required: [], kind: "condition" },
         { id: "request_to_reschedule", function: "reschedule_appointment", description: "Use when the caller wants to change an appointment.", target: "collect_details", properties: {}, required: [], kind: "condition" },
         { id: "request_to_cancel", function: "cancel_appointment", description: "Use when the caller wants to cancel an appointment.", target: "cancel_confirmation", properties: {}, required: [], kind: "condition" },
         { id: "request_to_human", function: "request_staff", description: "Use when the caller asks to speak with a person.", target: "staff_handoff", properties: {}, required: [], kind: "condition" },
@@ -65,20 +65,20 @@ export const showcaseAgent: AgentConfig = {
     },
     {
       id: "share_availability", name: "share_availability", title: "Share Availability", type: "conversation",
-      task_messages: [{ role: "developer", content: "Offer two short appointment options. This test route intentionally demonstrates a missing verification guard." }],
-      edges: [{ id: "availability_to_details", function: "continue_booking", description: "Use after the caller chooses an option and booking details are needed.", target: "collect_details", properties: { slot: { type: "string", description: "The appointment option the caller chose." } }, required: ["slot"], kind: "condition" }],
+      task_messages: [{ role: "developer", content: "Offer only two options: tomorrow at ten in the morning, or next Monday at two in the afternoon." }],
+      edges: [{ id: "availability_to_details", function: "continue_booking", description: "Use after the caller chooses one of the offered options.", target: "collect_details", properties: { slot: { type: "string", description: "The appointment option the caller chose.", enum: ["Tomorrow at 10:00 AM", "Next Monday at 2:00 PM"] } }, required: ["slot"], kind: "condition" }],
     },
     {
       id: "collect_details", name: "collect_details", title: "Collect Details", type: "conversation",
       task_messages: [{ role: "developer", content: "Collect the caller name, appointment reason, and preferred day. Ask one question at a time." }],
-      edges: [{ id: "details_to_verification", function: "record_details", description: "Use when the required appointment details are complete.", target: "verify_identity", properties: { patient_name: { type: "string", description: "The caller's full name." }, appointment_reason: { type: "string", description: "The reason for the visit." }, preferred_day: { type: "string", description: "The caller's preferred appointment day." } }, required: ["patient_name", "appointment_reason"], kind: "condition" }],
+      edges: [{ id: "details_to_verification", function: "record_details", description: "Use when the caller has provided their name, reason, and preferred day.", target: "verify_identity", properties: { patient_name: { type: "string", description: "The caller's full name." }, appointment_reason: { type: "string", description: "The reason for the visit." }, preferred_day: { type: "string", description: "The caller's preferred appointment day." } }, required: ["patient_name", "appointment_reason", "preferred_day"], kind: "condition" }],
     },
     {
       id: "verify_identity", name: "verify_identity", title: "Verify Identity", type: "conversation",
       task_messages: [{ role: "developer", content: "Verify the caller before protected scheduling details. If verification fails twice, use the warning route." }],
       edges: [
-        { id: "verification_to_availability", function: "verification_passed", description: "Use after identity verification succeeds.", target: "check_availability", properties: {}, required: [], kind: "success" },
-        { id: "verification_to_warning", function: "verification_failed", description: "Use after verification cannot be completed.", target: "verification_warning", properties: {}, required: [], kind: "failure" },
+        { id: "verification_to_availability", function: "verification_passed", description: "Use only when the caller provides the exact verification information and it is confirmed.", target: "check_availability", properties: { verification_status: { type: "string", description: "The verification result.", enum: ["verified"] } }, required: ["verification_status"], kind: "success" },
+        { id: "verification_to_warning", function: "verification_failed", description: "Use when verification is refused, unclear, incomplete, or fails.", target: "verification_warning", properties: { verification_status: { type: "string", description: "The verification result.", enum: ["failed", "rejected"] } }, required: ["verification_status"], kind: "failure" },
         { id: "verification_to_human", function: "verification_help", description: "Use when the caller needs staff help with verification.", target: "staff_handoff", properties: {}, required: [], kind: "condition" },
       ],
     },
@@ -99,9 +99,9 @@ export const showcaseAgent: AgentConfig = {
     },
     {
       id: "offer_times", name: "offer_times", title: "Offer Times", type: "conversation",
-      task_messages: [{ role: "developer", content: "Offer two short appointment options and ask which one the caller wants." }],
+      task_messages: [{ role: "developer", content: "Offer two short options: tomorrow at ten in the morning, or next Monday at two in the afternoon. Ask which one the caller wants." }],
       edges: [
-        { id: "time_selected", function: "select_time", description: "Use when the caller selects an available time.", target: "confirm_appointment", properties: { selected_time: { type: "string", description: "The selected appointment time." } }, required: ["selected_time"], kind: "condition" },
+        { id: "time_selected", function: "select_time", description: "Use when the caller selects one of the offered appointment times.", target: "confirm_appointment", properties: { selected_time: { type: "string", description: "The selected appointment time.", enum: ["Tomorrow at 10:00 AM", "Next Monday at 2:00 PM"] } }, required: ["selected_time"], kind: "condition" },
         { id: "time_declined", function: "decline_time", description: "Use when the caller does not want the offered options.", target: "declined_completion", properties: {}, required: [], kind: "condition" },
         { id: "time_unavailable", function: "no_suitable_time", description: "Use when none of the offered times work.", target: "no_availability", properties: {}, required: [], kind: "condition" },
       ],
@@ -110,7 +110,7 @@ export const showcaseAgent: AgentConfig = {
       id: "confirm_appointment", name: "confirm_appointment", title: "Confirm Appointment", type: "conversation",
       task_messages: [{ role: "developer", content: "Read back the appointment details and ask for explicit confirmation." }],
       edges: [
-        { id: "confirmation_to_booking", function: "confirm_booking", description: "Use after the caller explicitly confirms the appointment.", target: "book_appointment", properties: { explicit_confirmation: { type: "string", description: "The caller's explicit confirmation." } }, required: ["explicit_confirmation"], kind: "condition" },
+        { id: "confirmation_to_booking", function: "confirm_booking", description: "Use only after the caller explicitly confirms one of the read-back appointment details.", target: "book_appointment", properties: { explicit_confirmation: { type: "string", description: "The caller's explicit confirmation.", enum: ["yes", "confirmed", "I confirm"] } }, required: ["explicit_confirmation"], kind: "condition" },
         { id: "confirmation_declined", function: "cancel_booking", description: "Use when the caller declines the appointment.", target: "declined_completion", properties: {}, required: [], kind: "condition" },
       ],
     },

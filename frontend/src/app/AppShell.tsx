@@ -9,7 +9,7 @@ import { NodeInspector, NodeInspectorEmptyState } from "@/features/agent-inspect
 import type { AgentConfig, AgentDocument, AgentValidationError, CallRecord, CallReview, TestSession } from "@/features/agent-graph/model/type"
 import { activateAgentDraft, checkAgentApi, completeTestSession, createTestSession, getTestSession, reviewCall } from "@/lib/agentApi"
 import { CallHistoryWorkspace } from "@/features/call-history/components/CallHistoryWorkspace"
-import { completedFromTerminalEvidence, hasTerminalEvidence, loadCallHistory, resolveCallReview, updateCallReview, upsertCallRecord } from "@/features/call-history/lib/callHistoryStorage"
+import { completedFromTerminalEvidence, hasTerminalEvidence, loadCallHistory, reportDeveloperIssue, resolveCallReview, updateCallReview, upsertCallRecord } from "@/features/call-history/lib/callHistoryStorage"
 import { acceptedChangesForOperations, historicalContextForAgent, improvementRecordFromCall, loadImprovementMemory, updateImprovementDecision, updateImprovementReview, upsertImprovementRecord } from "@/features/call-history/lib/improvementMemory"
 import { useSuggestedFixFlow } from "@/features/suggested-fix/hooks/useSuggestedFixFlow"
 import { SuggestedFixOverlay } from "@/features/suggested-fix/components/SuggestedFixOverlay"
@@ -32,6 +32,8 @@ export function AppShell() {
   const sessionAgentIds = useRef(new Map<string, string>())
   const sessionAgentNames = useRef(new Map<string, string>())
   const reconcilingTerminalSessions = useRef(new Set<string>())
+  const settlingSessions = useRef(new Set<string>())
+  const finalizedSessions = useRef(new Set<string>())
   const [sessionPanelDismissed, setSessionPanelDismissed] = useState(false)
   const { state: suggestedFixState, start: startSuggestedFix, accept: acceptSuggestedFix, deny: denySuggestedFix, clear: clearSuggestedFix, movePreviewNode } = useSuggestedFixFlow({
     activeAgentId,
@@ -80,33 +82,46 @@ export function AppShell() {
     try {
       nextReview = await reviewCall({ document, baseVersion: session.draftVersion, call: record, history: historicalContextForAgent(improvementRecords, record.agentId ?? activeAgentId, record.id) })
     } catch (error) {
-      nextReview = { status: "unavailable", summary: "The AI reviewer could not inspect this call.", issues: [], recommendedAction: "no_change", reviewedAt: new Date().toISOString(), error: error instanceof Error ? error.message : "Unknown review error." }
+      const reason = error instanceof Error ? error.message : "Unknown review error."
+      nextReview = { status: "unavailable", summary: `Review unavailable: ${reason}`, issues: [], recommendedAction: "no_change", reviewedAt: new Date().toISOString(), error: reason }
     }
     setCallRecords(updateCallReview(session.id, nextReview))
     setImprovementRecords(updateImprovementReview(record, agents, nextReview))
   }, [activeAgentId, agent, agents, improvementRecords, sessionAgentId, sessionAgentName])
 
   const finalizeSession = useCallback((session: TestSession) => {
+    if (finalizedSessions.current.has(session.id)) return
+    finalizedSessions.current.add(session.id)
     const preview = session.draftVersion.endsWith("-preview")
     recordSession(session, preview)
     void reviewCompletedSession(session, preview)
     setTestSession(undefined)
   }, [recordSession, reviewCompletedSession])
 
+  const settleSession = useCallback((session: TestSession) => {
+    if (finalizedSessions.current.has(session.id) || settlingSessions.current.has(session.id)) return
+    settlingSessions.current.add(session.id)
+    window.setTimeout(() => {
+      void getTestSession(session.id).then((latest) => finalizeSession(latest)).catch(() => finalizeSession(session))
+    // Terminal graph evidence can precede the final assistant turn. Wait long
+    // enough to fetch that finalized turn before sending the review request.
+    }, 2_000)
+  }, [finalizeSession])
+
   const handleSessionUpdate = useCallback((session: TestSession) => {
     if (session.status === "completed" || session.status === "failed") {
-      finalizeSession(session)
+      settleSession(session)
       return
     }
     if (hasTerminalEvidence(session)) {
       if (!reconcilingTerminalSessions.current.has(session.id)) {
         reconcilingTerminalSessions.current.add(session.id)
-        void completeTestSession(session.id).then(finalizeSession).catch(() => finalizeSession(completedFromTerminalEvidence(session)))
+        void completeTestSession(session.id).then((completed) => settleSession(completed)).catch(() => settleSession(completedFromTerminalEvidence(session)))
       }
       return
     }
     setTestSession(session)
-  }, [finalizeSession])
+  }, [settleSession])
 
   const startTestCall = useCallback(async (previewDocument?: AgentDocument, previewVersion?: string) => {
     if (suggestedFixState.status === "loading" || suggestedFixState.status === "ready" || suggestedFixState.status === "stale") {
@@ -182,6 +197,10 @@ export function AppShell() {
     void reviewCompletedSession(record, Boolean(record.draftVersion.endsWith("-preview")))
   }, [reviewCompletedSession])
 
+  const onReportDevelopment = useCallback((record: CallRecord, summary: string) => {
+    setCallRecords(reportDeveloperIssue(record.id, summary))
+  }, [])
+
   const onProposeReviewedCall = useCallback((record: CallRecord, review: CallReview) => {
     const matchingAgent = agents.find((candidate) => candidate.id === record.agentId) ?? agents.find((candidate) => candidate.draft.config.name === record.agentName)
     if (matchingAgent && matchingAgent.id !== activeAgentId) {
@@ -204,5 +223,5 @@ export function AppShell() {
   const graphDraft = suggestedPreview ?? draft
   const graphValidationErrors = suggestedPreview ? validateAgentConfig(suggestedPreview.config) : validationErrors
   const suggestedNodeNames = suggestedFixState.response?.operations.filter((operation) => operation.op === "add_node").map((operation) => operation.node.name) ?? []
-  return <div className="relative flex h-screen min-h-[640px] overflow-hidden bg-[#f7f7f5]"><Sidebar workspace={workspace} onWorkspaceChange={setWorkspace} /><main className="flex min-w-0 flex-1 flex-col"><Topbar agentName={agent.name} persona={agent.persona} agents={agents} activeAgentId={activeAgentId} onSelectAgent={selectAgent} onUpdatePersona={(persona) => updateAgent({ persona })} onDeleteAgent={onDeleteAgent} canDeleteAgent={agents.length > 1} onTestCall={() => void startTestCall()} testCallDisabled={suggestedFixState.status === "loading" || suggestedFixState.status === "ready" || suggestedFixState.status === "stale"} isDirty={isDirty} validationErrors={validationErrors} onSelectValidationError={onSelectValidationError} onSave={saveDraft} onUndo={undo} onRedo={redo} canUndo={canUndo} canRedo={canRedo} onCreateAgent={onCreateAgent} /><div className={workspace === "history" ? "flex min-h-0 flex-1" : "hidden"}><CallHistoryWorkspace records={callRecords} improvementRecords={improvementRecords} onPropose={onProposeReviewedCall} onRetryReview={onRetryReview} /></div><div className={workspace === "history" ? "hidden" : "flex min-h-0 flex-1"}><div className="relative min-w-0 flex-1"><AgentGraph config={graphDraft.config} layout={graphDraft.layout} edgeHandles={graphDraft.edgeHandles} selectedNodeName={selectedNodeName} onSelectNode={selectNode} onCreateNode={createNode} onDeleteNode={deleteNode} onMoveNode={suggestedPreview ? movePreviewNode : moveNode} movableNodeNames={suggestedNodeNames} allowPreviewLayoutEdit={Boolean(suggestedPreview)} onCreateTransition={createTransition} onSelectTransition={selectTransition} connectionInteraction={connectionInteraction} onStartConnection={startConnection} onCancelConnection={cancelConnection} validationErrors={graphValidationErrors} isDirty={isDirty} readOnly={Boolean(suggestedPreview)} /><SuggestedFixOverlay state={suggestedFixState} onDismissError={clearSuggestedFix} /><SuggestedFixToast state={suggestedFixState} onAccept={() => void acceptSuggestedFix()} onDeny={denySuggestedFix} /></div><div className="flex w-[380px] shrink-0 flex-col">{selectedNode && !suggestedPreview ? <NodeInspector node={selectedNode} initialNode={agent.initial_node} validationErrors={validationErrors} onUpdateNode={updateNode} onDeleteNode={deleteNode} onUpdateEdge={updateEdge} onDeleteEdge={deleteEdge} selectedTransition={selectedTransition} onSelectTransition={selectTransition} /> : <NodeInspectorEmptyState />}{!suggestedPreview && <CopilotPanel document={agent} draft={draft} draftVersion={draftVersion} history={historicalContextForAgent(improvementRecords, activeAgentId)} onApplyOperations={applyCopilotOperations} onPreviewCall={(document, version) => void startTestCall(document, version)} onProposalLoadingChange={() => undefined} onPreviewChange={() => undefined} onProposalErrorChange={() => undefined} />}</div></div></main><TestSessionPanel session={sessionPanelDismissed ? undefined : testSession} message={testCallNotice} pendingUrl={pendingClientUrl} onOpenPending={openPendingTestCall} onDismiss={() => setSessionPanelDismissed(true)} onDismissMessage={() => { setTestCallNotice(undefined); setPendingClientUrl(undefined) }} /></div>
+  return <div className="relative flex h-screen min-h-[640px] overflow-hidden bg-[#f7f7f5]"><Sidebar workspace={workspace} onWorkspaceChange={setWorkspace} /><main className="flex min-w-0 flex-1 flex-col"><Topbar agentName={agent.name} persona={agent.persona} agents={agents} activeAgentId={activeAgentId} onSelectAgent={selectAgent} onUpdatePersona={(persona) => updateAgent({ persona })} onDeleteAgent={onDeleteAgent} canDeleteAgent={agents.length > 1} onTestCall={() => void startTestCall()} testCallDisabled={suggestedFixState.status === "loading" || suggestedFixState.status === "ready" || suggestedFixState.status === "stale"} isDirty={isDirty} validationErrors={validationErrors} onSelectValidationError={onSelectValidationError} onSave={saveDraft} onUndo={undo} onRedo={redo} canUndo={canUndo} canRedo={canRedo} onCreateAgent={onCreateAgent} /><div className={workspace === "history" ? "flex min-h-0 flex-1" : "hidden"}><CallHistoryWorkspace records={callRecords} improvementRecords={improvementRecords} onPropose={onProposeReviewedCall} onRetryReview={onRetryReview} onReportDevelopment={onReportDevelopment} /></div><div className={workspace === "history" ? "hidden" : "flex min-h-0 flex-1"}><div className="relative min-w-0 flex-1"><AgentGraph config={graphDraft.config} layout={graphDraft.layout} edgeHandles={graphDraft.edgeHandles} selectedNodeName={selectedNodeName} onSelectNode={selectNode} onCreateNode={createNode} onDeleteNode={deleteNode} onMoveNode={suggestedPreview ? movePreviewNode : moveNode} movableNodeNames={suggestedNodeNames} allowPreviewLayoutEdit={Boolean(suggestedPreview)} onCreateTransition={createTransition} onSelectTransition={selectTransition} connectionInteraction={connectionInteraction} onStartConnection={startConnection} onCancelConnection={cancelConnection} validationErrors={graphValidationErrors} isDirty={isDirty} readOnly={Boolean(suggestedPreview)} /><SuggestedFixOverlay state={suggestedFixState} onDismissError={clearSuggestedFix} /><SuggestedFixToast state={suggestedFixState} onAccept={() => void acceptSuggestedFix()} onDeny={denySuggestedFix} /></div><div className="flex w-[380px] shrink-0 flex-col">{selectedNode && !suggestedPreview ? <NodeInspector node={selectedNode} initialNode={agent.initial_node} validationErrors={validationErrors} onUpdateNode={updateNode} onDeleteNode={deleteNode} onUpdateEdge={updateEdge} onDeleteEdge={deleteEdge} selectedTransition={selectedTransition} onSelectTransition={selectTransition} /> : <NodeInspectorEmptyState />}{!suggestedPreview && <CopilotPanel document={agent} draft={draft} draftVersion={draftVersion} history={historicalContextForAgent(improvementRecords, activeAgentId)} onApplyOperations={applyCopilotOperations} onPreviewCall={(document, version) => void startTestCall(document, version)} onProposalLoadingChange={() => undefined} onPreviewChange={() => undefined} onProposalErrorChange={() => undefined} />}</div></div></main><TestSessionPanel session={sessionPanelDismissed ? undefined : testSession} message={testCallNotice} pendingUrl={pendingClientUrl} onOpenPending={openPendingTestCall} onDismiss={() => setSessionPanelDismissed(true)} onDismissMessage={() => { setTestCallNotice(undefined); setPendingClientUrl(undefined) }} /></div>
 }

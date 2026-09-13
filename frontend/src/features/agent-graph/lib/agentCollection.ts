@@ -32,8 +32,27 @@ export function ensureShowcaseAgent(collection: AgentCollection): AgentCollectio
 
 export function ensureDefaultAgents(collection: AgentCollection): AgentCollection {
   const withShowcase = ensureShowcaseAgent(collection)
-  if (withShowcase.agents.some((agent) => agent.draft.config.name === reviewExampleAgent.name)) return withShowcase
-  return { ...withShowcase, agents: [...withShowcase.agents, createStoredAgent(reviewExampleAgent)] }
+  const cleaned = withShowcase.agents.map((agent) => {
+    const normalized = removeLegacyTaskQueue(agent)
+    addKnownSchedulingConstraints(normalized.draft)
+    return normalized
+  })
+  if (cleaned.some((agent) => agent.draft.config.name === reviewExampleAgent.name)) return { ...withShowcase, agents: cleaned }
+  return { ...withShowcase, agents: [...cleaned, createStoredAgent(reviewExampleAgent)] }
+}
+
+function removeLegacyTaskQueue(agent: StoredAgent): StoredAgent {
+  const isBuiltIn = agent.draft.config.name === reviewExampleAgent.name || agent.draft.config.name === showcaseAgent.name
+  const hasTaskNodes = agent.draft.config.nodes.some((node) => ["task_check", "call_complete", "all_tasks_complete", "reschedule_options", "confirm_reschedule", "reschedule_appointment", "reschedule_complete"].includes(node.name))
+  if (!isBuiltIn || !hasTaskNodes) return agent
+  const template = agent.draft.config.name === reviewExampleAgent.name ? reviewExampleAgent : showcaseAgent
+  const cleanDraft = createAgentDraft(template)
+  cleanDraft.config.id = agent.draft.config.id
+  cleanDraft.config.revision = agent.draft.config.revision
+  cleanDraft.config.version = agent.draft.config.version
+  cleanDraft.layout = Object.fromEntries(cleanDraft.config.nodes.map((node) => [node.name, agent.draft.layout[node.name] ?? cleanDraft.layout[node.name]]))
+  cleanDraft.edgeHandles = { ...cleanDraft.edgeHandles, ...Object.fromEntries(Object.entries(agent.draft.edgeHandles ?? {}).filter(([key]) => key in cleanDraft.edgeHandles)) }
+  return { ...agent, draft: cleanDraft, updatedAt: now() }
 }
 
 function migrateStoredDraft(draft: AgentDraft): AgentDraft {
@@ -43,7 +62,31 @@ function migrateStoredDraft(draft: AgentDraft): AgentDraft {
   normalized.config.version = draft.config.version
   normalized.layout = Object.fromEntries(normalized.config.nodes.map((node) => [node.name, draft.layout[node.name] ?? normalized.layout[node.name]]))
   normalized.edgeHandles = { ...normalized.edgeHandles, ...Object.fromEntries(Object.entries(draft.edgeHandles ?? {}).filter(([key]) => key in normalized.edgeHandles)) }
+  addKnownSchedulingConstraints(normalized)
   return normalized
+}
+
+function addKnownSchedulingConstraints(draft: AgentDraft): void {
+  if (!new Set([reviewExampleAgent.name, showcaseAgent.name]).has(draft.config.name)) return
+  const offeredTimes = ["Tomorrow at 10:00 AM", "Next Monday at 2:00 PM"]
+  draft.config.nodes = draft.config.nodes.map((node) => ({
+    ...node,
+    edges: node.edges.map((edge) => {
+      if (edge.function !== "finish_booking" && edge.function !== "select_time") return edge
+      return {
+        ...edge,
+        properties: {
+          ...edge.properties,
+          selected_time: {
+            type: "string",
+            description: edge.properties.selected_time?.description || "The appointment option the caller chose.",
+            enum: offeredTimes,
+          },
+        },
+        required: [...new Set([...edge.required, "selected_time"])],
+      }
+    }),
+  }))
 }
 
 function isDraft(value: unknown): value is AgentDraft {
@@ -87,7 +130,9 @@ export function loadAgentCollection(): AgentCollection | undefined {
   const id = legacyDraft.config.id || createAgentId()
   legacyDraft.config.id = id
   const edgeHandles = legacyDraft.edgeHandles ?? Object.fromEntries(legacyDraft.config.nodes.flatMap((node) => node.edges.map((edge, index) => [edgeHandleKey(node.name, edge, index), defaultEdgeHandleLayout()])))
-  const collection = ensureDefaultAgents({ activeAgentId: id, agents: [{ id, draft: { ...legacyDraft, edgeHandles }, updatedAt: now() }] })
+  const migratedDraft = { ...legacyDraft, edgeHandles }
+  addKnownSchedulingConstraints(migratedDraft)
+  const collection = ensureDefaultAgents({ activeAgentId: id, agents: [{ id, draft: migratedDraft, updatedAt: now() }] })
   saveAgentCollection(collection)
   return collection
 }

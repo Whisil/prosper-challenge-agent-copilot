@@ -52,7 +52,7 @@ export const exampleAgent: AgentConfig = {
       task_messages: [
         {
           role: "developer",
-          content: "Offer exactly two options: Tuesday at 10 AM, or Thursday at 2 PM. Ask which one works for them.",
+          content: "Offer exactly two options: Tuesday at ten in the morning, or Thursday at two in the afternoon. Ask which one works for them.",
         },
       ],
       edges: [

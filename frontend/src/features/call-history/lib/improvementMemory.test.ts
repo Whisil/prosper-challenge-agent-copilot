@@ -74,4 +74,13 @@ describe("improvement memory", () => {
     expect(record).not.toHaveProperty("document")
     expect(record).not.toHaveProperty("trace")
   })
+
+  it("keeps unavailable reviews distinct from no-change reviews", () => {
+    const agent = createStoredAgent(exampleAgent)
+    const source = { ...call(agent), review: { status: "unavailable" as const, summary: "The backend timed out.", issues: [], recommendedAction: "no_change" as const, reviewedAt: "2026-01-01T10:02:00.000Z", error: "Request timed out." }, reviewState: "unavailable" as const }
+    vi.stubGlobal("window", { localStorage: storage() })
+
+    const records = loadImprovementMemory([source], [agent])
+    expect(records[0]).toMatchObject({ reviewStatus: "unavailable", decision: "unreviewed" })
+  })
 })

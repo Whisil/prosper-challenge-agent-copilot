@@ -1,4 +1,4 @@
-import type { CallRecord, CallReview, StoredAgent, TestSession, TraceEvent } from "@/features/agent-graph/model/type"
+import type { CallRecord, CallReview, DeveloperReport, StoredAgent, TestSession, TraceEvent } from "@/features/agent-graph/model/type"
 import { humanizeIdentifier } from "@/features/agent-graph/lib/identifier"
 
 export const CALL_HISTORY_STORAGE_KEY = "prosper-call-history-v1"
@@ -24,13 +24,18 @@ export const sampleCall: CallRecord = {
     summary: "Appointment availability was shared before the caller's identity was verified.",
     recommendedAction: "propose_changes",
     reviewedAt: "2026-01-01T10:01:05.000Z",
-    issues: [{ title: "Verification was skipped", explanation: "The booking route moves directly from Caller Request to Share Availability without a verification step.", severity: "high", nodeId: "share_availability", edgeId: "request_to_availability" }],
+    evidenceQuality: "trace_only",
+    issues: [{ title: "Verification was skipped", explanation: "The booking route moves directly from Caller Request to Share Availability without a verification step.", severity: "high", nodeId: "share_availability", edgeId: "request_to_availability", observedBehavior: "Availability was shared before identity verification.", expectedBehavior: "Verify the caller before sharing appointment options." }],
   },
   events: [
     { timestamp: "2026-01-01T10:00:01.000Z", kind: "node_entered", nodeId: "caller_request", message: "The call started.", payload: { nodeTitle: "Caller Request", isEntry: true } },
     { timestamp: "2026-01-01T10:00:20.000Z", kind: "transition", nodeId: "caller_request", edgeId: "request_to_availability", message: "The caller asked to book.", payload: { sourceTitle: "Caller Request", transitionName: "book_appointment", targetTitle: "Share Availability" } },
     { timestamp: "2026-01-01T10:00:22.000Z", kind: "node_entered", nodeId: "share_availability", message: "Appointment options were shared.", payload: { nodeTitle: "Share Availability" } },
     { timestamp: "2026-01-01T10:01:00.000Z", kind: "ended", nodeId: "booking_complete", message: "The call ended.", payload: { nodeTitle: "Booking Complete", isTerminal: true } },
+  ],
+  transcript: [
+    { id: "sample-turn-1", role: "user", text: "I want to book an appointment.", timestamp: "2026-01-01T10:00:18.000Z" },
+    { id: "sample-turn-2", role: "assistant", text: "Here are two appointment options.", timestamp: "2026-01-01T10:00:22.000Z" },
   ],
 }
 
@@ -53,13 +58,17 @@ export function summarizeTraceEvent(event: TraceEvent): TraceSummary {
     case "node_entered":
       return { title: `${nodeTitle} started`, detail: typeof payload.explanation === "string" ? payload.explanation : event.message ?? `The agent began the ${nodeTitle} step.`, tone: "neutral" }
     case "transition":
-      return { title: `${transitionName} used`, detail: typeof payload.sourceTitle === "string" && typeof payload.targetTitle === "string" ? `The caller moved from ${sourceTitle} to ${targetTitle} through this route.` : event.message ?? `The caller used ${transitionName}.`, tone: "pass" }
+      return { title: `${transitionName} used`, detail: typeof payload.sourceTitle === "string" && typeof payload.targetTitle === "string" ? `The caller moved from ${sourceTitle} to ${targetTitle} through ${transitionName}${payload.collectedFields && typeof payload.collectedFields === "object" && Object.keys(payload.collectedFields).length > 0 ? ` with ${Object.keys(payload.collectedFields).map(humanizeIdentifier).join(", ")} recorded.` : "."}` : event.message ?? `The caller used ${transitionName}.`, tone: "pass" }
     case "tool_call":
       return { title: `${humanizeIdentifier(typeof payload.toolName === "string" ? payload.toolName : "Tool action")} ran`, detail: event.message ?? `The agent used the ${nodeTitle} action.`, tone: "pass" }
     case "handoff":
       return { title: "Call handed to staff", detail: event.message ?? `The caller was transferred from ${nodeTitle}.`, tone: "warning" }
     case "ended":
       return { title: "Call completed", detail: event.message ?? "The conversation ended.", tone: event.payload?.status === "failed" ? "warning" : "pass" }
+    case "validation_failed":
+      return { title: "A step was blocked", detail: event.message ?? "The transition arguments did not match the configured requirements, so the flow stayed on this step.", tone: "warning" }
+    case "runtime_defect":
+      return { title: "Runtime issue detected", detail: event.message ?? "The runtime could not complete the configured workflow.", tone: "warning" }
   }
 }
 
@@ -90,6 +99,7 @@ function parse(value: string | null): CallRecord[] {
       delete normalized.feedback
       delete normalized.issueFlag
       delete normalized.isDemo
+      delete (normalized as CallRecord & { tasks?: unknown }).tasks
       if ((normalized.status === "completed" || normalized.status === "failed") && !normalized.review) {
         normalized.reviewState = "unavailable"
         normalized.review = { status: "unavailable", summary: "This call has not been reviewed yet.", issues: [], recommendedAction: "no_change", reviewedAt: new Date().toISOString(), error: "Review is unavailable for this older call. Retry AI review to inspect it." }
@@ -127,7 +137,7 @@ export function upsertCallRecord(record: CallRecord): CallRecord[] {
 }
 
 export function updateCallReview(id: string, review: CallReview): CallRecord[] {
-  const next = loadCallHistory().map((record) => record.id === id ? { ...record, review, reviewState: "complete" as const } : record)
+  const next = loadCallHistory().map((record) => record.id === id ? { ...record, review, reviewState: review.status === "unavailable" ? "unavailable" as const : "complete" as const } : record)
   saveCallHistory(next)
   return next
 }
@@ -136,6 +146,23 @@ export function resolveCallReview(id: string): CallRecord[] {
   const next = loadCallHistory().map((record) => record.id === id && record.review
     ? { ...record, review: { ...record.review, resolution: "resolved" as const }, reviewState: "complete" as const }
     : record)
+  saveCallHistory(next)
+  return next
+}
+
+export function reportDeveloperIssue(id: string, summary: string): CallRecord[] {
+  const next = loadCallHistory().map((record) => {
+    if (record.id !== id || record.developerReport) return record
+    const report: DeveloperReport = {
+      id: `report_${crypto.randomUUID()}`,
+      createdAt: new Date().toISOString(),
+      summary,
+      draftVersion: record.draftVersion,
+      sessionId: record.id,
+      eventKinds: record.events.map((event) => event.kind),
+    }
+    return { ...record, developerReport: report }
+  })
   saveCallHistory(next)
   return next
 }

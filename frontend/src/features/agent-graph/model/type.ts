@@ -137,7 +137,7 @@ export interface AgentValidationError {
   location?: AgentValidationLocation
 }
 
-export type TraceEventKind = "node_entered" | "transition" | "tool_call" | "handoff" | "ended"
+export type TraceEventKind = "node_entered" | "transition" | "tool_call" | "handoff" | "ended" | "validation_failed" | "runtime_defect"
 
 export interface TraceEvent {
   timestamp: string
@@ -148,6 +148,14 @@ export interface TraceEvent {
   payload?: Record<string, unknown>
 }
 
+export interface TranscriptTurn {
+  id: string
+  role: "user" | "assistant"
+  text: string
+  timestamp: string
+  interrupted?: boolean
+}
+
 export interface TestSession {
   id: string
   draftVersion: string
@@ -155,6 +163,17 @@ export interface TestSession {
   startedAt: string
   endedAt?: string
   events: TraceEvent[]
+  transcript?: TranscriptTurn[]
+  transcriptTruncated?: boolean
+}
+
+export interface DeveloperReport {
+  id: string
+  createdAt: string
+  summary: string
+  draftVersion: string
+  sessionId: string
+  eventKinds: TraceEventKind[]
 }
 
 export interface CallReviewIssue {
@@ -163,16 +182,21 @@ export interface CallReviewIssue {
   severity: "low" | "medium" | "high"
   nodeId?: string
   edgeId?: string
+  evidenceTurnIds?: string[]
+  observedBehavior?: string
+  expectedBehavior?: string
+  resolutionType?: "graph_change" | "runtime_defect" | "no_action"
 }
 
 export interface CallReview {
   status: "passed" | "needs_attention" | "unavailable"
   summary: string
   issues: CallReviewIssue[]
-  recommendedAction: "no_change" | "propose_changes"
+  recommendedAction: "no_change" | "propose_changes" | "report_development"
   reviewedAt: string
   error?: string
   resolution?: "resolved"
+  evidenceQuality?: "trace_and_transcript" | "trace_only" | "incomplete"
 }
 
 export interface CallRecord extends TestSession {
@@ -182,6 +206,7 @@ export interface CallRecord extends TestSession {
   isSample?: boolean
   review?: CallReview
   reviewState?: "pending" | "complete" | "unavailable"
+  developerReport?: DeveloperReport
 }
 
 export type ImprovementDecision = "unreviewed" | "no_change" | "accepted" | "rejected"

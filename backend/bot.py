@@ -35,7 +35,7 @@ from pipecat.workers.runner import WorkerRunner
 from pipecat_flows import FlowManager
 
 from agent_builder import AgentBuilder
-from control_api import active_flow_path, get_test_session_document, mark_runtime_completed, mark_runtime_connected, record_runtime_event, start_control_server
+from control_api import active_flow_path, get_test_session_document, mark_runtime_completed, mark_runtime_connected, record_runtime_context_transcript, record_runtime_event, record_runtime_transcript, resolve_runtime_session_id, start_control_server
 
 # Load .env next to this file, so the bot runs the same from the repo root or backend/.
 load_dotenv(Path(__file__).parent / ".env", override=True)
@@ -81,16 +81,18 @@ async def run_bot(
         context,
         user_params=LLMUserAggregatorParams(vad_analyzer=SileroVADAnalyzer()),
     )
+    user_aggregator = context_aggregator.user()
+    assistant_aggregator = context_aggregator.assistant()
 
     pipeline = Pipeline(
         [
             transport.input(),
             stt,
-            context_aggregator.user(),
+            user_aggregator,
             llm,
             tts,
             transport.output(),
-            context_aggregator.assistant(),
+            assistant_aggregator,
         ]
     )
 
@@ -106,27 +108,41 @@ async def run_bot(
         worker=worker,
         transport=transport,
     )
+    runtime_session_id: str | None = None
+
+    @user_aggregator.event_handler("on_user_turn_stopped")
+    async def on_user_turn_stopped(aggregator, strategy, message):
+        record_runtime_transcript("user", getattr(message, "content", None), session_id=runtime_session_id, timestamp=getattr(message, "timestamp", None))
+
+    @assistant_aggregator.event_handler("on_assistant_turn_stopped")
+    async def on_assistant_turn_stopped(aggregator, message):
+        record_runtime_transcript("assistant", getattr(message, "content", None), session_id=runtime_session_id, timestamp=getattr(message, "timestamp", None), interrupted=bool(getattr(message, "interrupted", False)))
 
     @transport.event_handler("on_client_connected")
     async def on_client_connected(transport, client):
-        session_id = client_session_id(client)
+        nonlocal runtime_session_id
+        session_id = resolve_runtime_session_id(client_session_id(client))
         preview_document = get_test_session_document(session_id)
         active_builder = AgentBuilder(AgentBuilder.from_dict(preview_document).config, runtime_session_id=session_id) if preview_document else AgentBuilder(AgentBuilder.from_json(active_flow_path(AGENT_FLOW)).config, runtime_session_id=session_id)
         logger.info(f"Client connected — starting '{active_builder.config.name}' at initial node")
         await flow_manager.initialize(active_builder.build_initial_node())
         initial = next((node for node in active_builder.config.nodes if node.name == active_builder.config.initial_node), None)
-        mark_runtime_connected(active_builder.config.initial_node, session_id, node_title=initial.title if initial else None, explanation=initial.task_messages[0].get("content", "") if initial and initial.task_messages and isinstance(initial.task_messages[0], dict) else None, is_terminal=bool(initial and initial.end))
+        runtime_session_id = mark_runtime_connected(active_builder.config.initial_node, session_id, node_title=initial.title if initial else None, explanation=initial.task_messages[0].get("content", "") if initial and initial.task_messages and isinstance(initial.task_messages[0], dict) else None, is_terminal=bool(initial and initial.end)) or session_id
         if initial and initial.type == "tool":
             record_runtime_event("tool_call", f"The mock action {initial.tool.get('name', initial.name) if initial.tool else initial.name} ran.", session_id=session_id, node_id=initial.id or initial.name, nodeTitle=initial.title or initial.name, toolName=initial.tool.get('name', initial.name) if initial.tool else initial.name, mock=True)
         if initial and initial.type == "transfer":
             record_runtime_event("handoff", f"The caller was handed to staff: {initial.transfer.get('reason', 'Transfer requested.') if initial.transfer else 'Transfer requested.'}", session_id=session_id, node_id=initial.id or initial.name, nodeTitle=initial.title or initial.name, reason=initial.transfer.get('reason') if initial.transfer else None, mock=True)
         if initial and initial.end:
-            mark_runtime_completed(session_id, f"The workflow reached {initial.title or initial.name}.", initial.id or initial.name, initial.title or initial.name)
+            mark_runtime_completed(session_id, f"The workflow reached {initial.title or initial.name}.", initial.id or initial.name, initial.title or initial.name, initial.type or ("end" if initial.end else "conversation"))
 
     @transport.event_handler("on_client_disconnected")
     async def on_client_disconnected(transport, client):
+        nonlocal runtime_session_id
         logger.info("Client disconnected")
-        mark_runtime_completed(client_session_id(client))
+        session_id = client_session_id(client) or runtime_session_id
+        record_runtime_context_transcript(context.messages, session_id=session_id)
+        mark_runtime_completed(session_id)
+        runtime_session_id = None
         await worker.cancel()
 
     runner = WorkerRunner(handle_sigint=runner_args.handle_sigint)
