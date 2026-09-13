@@ -177,10 +177,38 @@ export interface CallReview {
 
 export interface CallRecord extends TestSession {
   title: string
+  agentId?: string
   agentName?: string
   isSample?: boolean
   review?: CallReview
   reviewState?: "pending" | "complete" | "unavailable"
+}
+
+export type ImprovementDecision = "unreviewed" | "no_change" | "accepted" | "rejected"
+
+export interface AcceptedImprovementChange {
+  kind: "added_node" | "added_edge" | "updated_node" | "updated_edge"
+  id: string
+  beforeTarget?: string
+  afterTarget?: string
+}
+
+export interface ImprovementRecord {
+  id: string
+  agentId: string
+  callId: string
+  draftVersion: string
+  createdAt: string
+  outcome: "completed" | "failed"
+  summary: string
+  reviewStatus: "pending" | "passed" | "needs_attention" | "unavailable"
+  issues: CallReviewIssue[]
+  decision: ImprovementDecision
+  appliedVersion?: string
+  affectedNodeIds?: string[]
+  affectedEdgeIds?: string[]
+  acceptedChanges?: AcceptedImprovementChange[]
+  proposedChanges?: string[]
 }
 
 export type AgentEditorAction =

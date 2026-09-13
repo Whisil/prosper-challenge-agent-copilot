@@ -1,4 +1,4 @@
-import type { CallRecord, CallReview, TestSession, TraceEvent } from "@/features/agent-graph/model/type"
+import type { CallRecord, CallReview, StoredAgent, TestSession, TraceEvent } from "@/features/agent-graph/model/type"
 import { humanizeIdentifier } from "@/features/agent-graph/lib/identifier"
 
 export const CALL_HISTORY_STORAGE_KEY = "prosper-call-history-v1"
@@ -75,7 +75,9 @@ export function completedFromTerminalEvidence(session: TestSession): TestSession
 function mergeSampleCall(records: CallRecord[]): CallRecord[] {
   const existingSample = records.find((record) => record.id === sampleCall.id)
   const resolution = existingSample?.review?.resolution
-  return [{ ...sampleCall, isSample: true, ...(resolution ? { review: { ...sampleCall.review, resolution } } : {}) }, ...records.filter((record) => record.id !== sampleCall.id && record.id !== "demo-premature-disclosure" && record.id !== "demo-human-request")]
+  const sampleReview = sampleCall.review
+  const resolvedReview = resolution && sampleReview ? { review: { ...sampleReview, resolution } } : {}
+  return [{ ...sampleCall, isSample: true, ...resolvedReview }, ...records.filter((record) => record.id !== sampleCall.id && record.id !== "demo-premature-disclosure" && record.id !== "demo-human-request")]
 }
 
 function parse(value: string | null): CallRecord[] {
@@ -99,9 +101,15 @@ function parse(value: string | null): CallRecord[] {
   }
 }
 
-export function loadCallHistory(): CallRecord[] {
+export function loadCallHistory(agents?: StoredAgent[]): CallRecord[] {
   if (typeof window === "undefined") return [sampleCall]
-  const records = parse(window.localStorage.getItem(CALL_HISTORY_STORAGE_KEY))
+  let records = parse(window.localStorage.getItem(CALL_HISTORY_STORAGE_KEY))
+  if (agents) {
+    records = records.map((record) => record.agentId ? record : {
+      ...record,
+      agentId: agents.find((agent) => agent.draft.config.name === record.agentName)?.id,
+    })
+  }
   saveCallHistory(records)
   return records
 }
@@ -113,7 +121,7 @@ export function saveCallHistory(records: CallRecord[]): void {
 
 export function upsertCallRecord(record: CallRecord): CallRecord[] {
   const previous = loadCallHistory().find((current) => current.id === record.id)
-  const next = [{ ...record, review: record.review ?? previous?.review, reviewState: record.reviewState ?? previous?.reviewState, agentName: record.agentName ?? previous?.agentName }, ...loadCallHistory().filter((current) => current.id !== record.id)]
+  const next = [{ ...record, review: record.review ?? previous?.review, reviewState: record.reviewState ?? previous?.reviewState, agentId: record.agentId ?? previous?.agentId, agentName: record.agentName ?? previous?.agentName }, ...loadCallHistory().filter((current) => current.id !== record.id)]
   saveCallHistory(next)
   return next
 }
