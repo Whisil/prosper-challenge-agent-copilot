@@ -19,6 +19,17 @@ from pipecat_flows import FlowManager, FlowsFunctionSchema, NodeConfig
 from .schema import AgentConfig, Edge, Node
 
 
+SPOKEN_RESPONSE_GUIDANCE = {
+    "role": "developer",
+    "content": (
+        "Your reply is spoken aloud. Use short, complete sentences with normal punctuation. "
+        "Say times in plain words, such as 'two in the afternoon'; never say clock-style "
+        "notation such as '2:00 PM', '02:00 AM', '2 p.m.', or raw abbreviations aloud. "
+        "Do not read internal IDs, function names, or field names to the caller."
+    ),
+}
+
+
 def _validate_edge_arguments(edge: Edge, args: dict) -> None:
     """Keep function-call arguments inside the transition's declared contract."""
     if not isinstance(args, dict):
@@ -153,7 +164,7 @@ class AgentBuilder:
         node_config: NodeConfig = {
             "name": node.name,
             "role_message": node.role_message or self.config.persona,
-            "task_messages": node.task_messages,
+            "task_messages": [*node.task_messages, SPOKEN_RESPONSE_GUIDANCE],
             "functions": [self._make_edge_function(node, edge) for edge in node.edges],
         }
         if node.pre_actions:

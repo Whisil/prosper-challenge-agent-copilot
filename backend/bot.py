@@ -30,11 +30,13 @@ from pipecat.runner.utils import create_transport
 from pipecat.services.elevenlabs.stt import ElevenLabsRealtimeSTTService
 from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
 from pipecat.services.openai.llm import OpenAILLMService
+from pipecat.services.tts_service import TextAggregationMode
 from pipecat.transports.base_transport import BaseTransport, TransportParams
 from pipecat.workers.runner import WorkerRunner
 from pipecat_flows import FlowManager
 
 from agent_builder import AgentBuilder
+from config import elevenlabs_tts_speed
 from control_api import active_flow_path, get_test_session_document, mark_runtime_completed, mark_runtime_connected, record_runtime_context_transcript, record_runtime_event, record_runtime_transcript, resolve_runtime_session_id, start_control_server
 
 # Load .env next to this file, so the bot runs the same from the repo root or backend/.
@@ -72,7 +74,12 @@ async def run_bot(
     stt = ElevenLabsRealtimeSTTService(api_key=os.environ["ELEVENLABS_API_KEY"])
     tts = ElevenLabsTTSService(
         api_key=os.environ["ELEVENLABS_API_KEY"],
-        settings=ElevenLabsTTSService.Settings(voice=config.voice_id),
+        settings=ElevenLabsTTSService.Settings(
+            voice=config.voice_id,
+            speed=elevenlabs_tts_speed(),
+            apply_text_normalization="on",
+        ),
+        text_aggregation_mode=TextAggregationMode.SENTENCE,
     )
     llm = OpenAILLMService(api_key=os.environ["OPENAI_API_KEY"], model=config.model)
 
@@ -110,8 +117,9 @@ async def run_bot(
     )
     runtime_session_id: str | None = None
 
-    @user_aggregator.event_handler("on_user_turn_stopped")
-    async def on_user_turn_stopped(aggregator, strategy, message):
+    @user_aggregator.event_handler("on_user_turn_message_added")
+    async def on_user_turn_message_added(aggregator, message):
+        """Store the finalized user message after Pipecat writes it to context."""
         record_runtime_transcript("user", getattr(message, "content", None), session_id=runtime_session_id, timestamp=getattr(message, "timestamp", None))
 
     @assistant_aggregator.event_handler("on_assistant_turn_stopped")

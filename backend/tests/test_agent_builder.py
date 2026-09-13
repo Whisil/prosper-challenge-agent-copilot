@@ -24,6 +24,16 @@ def test_legacy_example_builds():
     assert builder.build_initial_node()["name"] == "greeting"
 
 
+def test_every_runtime_node_includes_spoken_response_guidance():
+    builder = AgentBuilder.from_json(EXAMPLE_PATH)
+
+    messages = builder.build_initial_node()["task_messages"]
+
+    assert messages[-1]["role"] == "developer"
+    assert "Say times in plain words" in messages[-1]["content"]
+    assert "2:00 PM" in messages[-1]["content"]
+
+
 def test_versioned_document_uses_ids_and_types():
     document = load_example()
     document["version"] = 1

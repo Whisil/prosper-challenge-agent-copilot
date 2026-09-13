@@ -15,3 +15,15 @@ def copilot_model() -> str:
     if not model:
         raise RuntimeError("OPENAI_MODEL is not configured. Set it in backend/.env and restart the backend.")
     return model
+
+
+def elevenlabs_tts_speed() -> float:
+    """Return a deliberately unhurried voice speed within ElevenLabs' supported range."""
+    raw_speed = os.getenv("ELEVENLABS_TTS_SPEED", "0.92").strip()
+    try:
+        speed = float(raw_speed)
+    except ValueError as error:
+        raise RuntimeError("ELEVENLABS_TTS_SPEED must be a number between 0.7 and 1.2.") from error
+    if not 0.7 <= speed <= 1.2:
+        raise RuntimeError("ELEVENLABS_TTS_SPEED must be between 0.7 and 1.2.")
+    return speed

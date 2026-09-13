@@ -66,11 +66,12 @@ backend/.env is the source of backend credentials and Copilot model configuratio
 OPENAI_API_KEY=...
 OPENAI_MODEL=gpt-5.6-luna
 ELEVENLABS_API_KEY=...
+ELEVENLABS_TTS_SPEED=0.92
 PROSPER_CONTROL_PORT=8000
 PROSPER_STATE_DIR=backend/.local
 ~~~
 
-Only the first three are required for the normal voice/review workflow. The port and state directory are optional.
+Only the first three are required for the normal voice/review workflow. `ELEVENLABS_TTS_SPEED` is optional and defaults to `0.92`, which is intentionally a little slower than normal speech for clear appointment details. The port and state directory are optional.
 
 Configuration is loaded by backend/config.py. copilot_model() reads OPENAI_MODEL and fails clearly when it is missing. The OpenAI key remains on the backend.
 
@@ -80,6 +81,8 @@ There are two intentionally separate model settings:
 - OPENAI_MODEL selects the Copilot model for call review and proposal generation.
 
 To change the Copilot model, edit backend/.env and restart make run. Do not add the Copilot model to frontend/.env. To change the voice model, edit the active agent document or template's model field.
+
+The runtime sends complete sentences to ElevenLabs, enables ElevenLabs text normalization, and adds a small spoken-response rule to every active graph node. It tells the voice model to say a time as words—for example, “two in the afternoon”—rather than reading `2:00 PM` or `02:00 AM` aloud. This rule applies to existing saved agents after a backend restart. Adjust `ELEVENLABS_TTS_SPEED` only if the default remains too quick or slow for the selected voice.
 
 ## Runtime flow
 
@@ -141,7 +144,7 @@ The frontend editor's stable IDs and layout metadata are not runtime fields. The
 
 control_api.py keeps active sessions in memory for the local process. Each session contains an ID, draft version, status, timestamps, an optional session document, trace events, and an optional bounded transcript. Sessions are evidence for one call only; the browser stores completed call history.
 
-Runtime events and transcript turns are associated with an explicit session ID whenever available. Some browser voice transports do not expose the URL query parameter on their connection object, so the runtime resolves the newest control session at connection time. On disconnect it also recovers user and assistant messages from the final LLM context if a turn callback raced shutdown. Event payloads include human-readable titles and structured transition context where the runtime can provide it. The frontend uses those fields to create readable timeline entries instead of showing raw event names.
+Runtime events and transcript turns are associated with an explicit session ID whenever available. Some browser voice transports do not expose the URL query parameter on their connection object, so the runtime resolves the newest control session at connection time. User turns are recorded from Pipecat's finalized `on_user_turn_message_added` event; assistant turns use `on_assistant_turn_stopped`. On disconnect the runtime also recovers user and assistant messages from the final LLM context if a turn callback raced shutdown. Event payloads include human-readable titles and structured transition context where the runtime can provide it. The frontend uses those fields to create readable timeline entries instead of showing raw event names.
 
 Terminal evidence includes:
 
