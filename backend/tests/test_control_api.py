@@ -195,6 +195,71 @@ def test_proposal_rejects_missing_edge_reference_with_available_ids():
         control_api._validate_copilot_operations(document, [{"op": "update_edge", "edgeId": "None", "patch": {"target": "done"}}])
 
 
+def test_historical_context_is_compact_and_limited_to_twenty_records():
+    document = _strict_document()
+    history = {
+        "agentId": "scheduler",
+        "records": [
+            {
+                "callId": f"call-{index}",
+                "draftVersion": "scheduler-v1",
+                "outcome": "completed",
+                "summary": "A compact finding.",
+                "reviewStatus": "needs_attention",
+                "issues": [{"title": "Issue", "explanation": "Details", "severity": "high", "nodeId": "greeting"}],
+                "decision": "accepted",
+                "events": [{"kind": "node_entered", "message": "This must not be sent."}],
+            }
+            for index in range(25)
+        ],
+    }
+
+    context = control_api._historical_context({"history": history}, document)
+
+    assert context["agentId"] == "scheduler"
+    assert len(context["records"]) == 20
+    assert "events" not in context["records"][0]
+    assert "current_agent_document" not in context["records"][0]
+    assert context["records"][0]["issues"][0]["nodeId"] == "greeting"
+
+
+def test_historical_context_ignores_records_for_another_agent():
+    document = _strict_document()
+
+    assert control_api._historical_context({"history": {"agentId": "another-agent", "records": [{"summary": "Other", "decision": "accepted"}]}}, document) is None
+
+
+def test_accepted_edge_change_cannot_be_reversed_by_a_new_proposal():
+    history = {
+        "agentId": "scheduler",
+        "records": [{
+            "decision": "accepted",
+            "acceptedChanges": [{"kind": "updated_edge", "id": "greeting_to_done", "beforeTarget": "done", "afterTarget": "verification"}],
+        }],
+    }
+
+    with pytest.raises(ValueError, match="reverse an accepted change"):
+        control_api._validate_historical_conflicts(
+            [{"op": "update_edge", "edgeId": "greeting_to_done", "patch": {"target": "done"}}],
+            history,
+        )
+
+
+def test_legitimate_change_on_an_accepted_edge_is_not_blocked():
+    history = {
+        "agentId": "scheduler",
+        "records": [{
+            "decision": "accepted",
+            "acceptedChanges": [{"kind": "updated_edge", "id": "greeting_to_done", "beforeTarget": "done", "afterTarget": "verification"}],
+        }],
+    }
+
+    control_api._validate_historical_conflicts(
+        [{"op": "update_edge", "edgeId": "greeting_to_done", "patch": {"description": "Use after the caller is verified."}}],
+        history,
+    )
+
+
 def test_proposal_accepts_complete_edges_on_an_added_node():
     document = _strict_document()
     proposed = {
