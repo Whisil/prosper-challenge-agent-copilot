@@ -1,4 +1,4 @@
-import { ChevronDown, PhoneCall, Plus, Redo2, Save, Settings2, Trash2, Undo2 } from "lucide-react"
+import { ChevronDown, PhoneCall, Plus, Redo2, Save, Settings2, Undo2 } from "lucide-react"
 import { useRef, useState } from "react"
 import { Button } from "@/components/ui/Button"
 import { useClickOutside } from "@/lib/useClickOutside"
