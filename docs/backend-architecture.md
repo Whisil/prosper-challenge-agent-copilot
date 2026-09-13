@@ -42,7 +42,7 @@ The backend owns:
 - Compiling the graph into Pipecat FlowManager nodes.
 - Activating the frontend's saved draft for the next call.
 - Creating and tracking local test sessions.
-- Recording runtime node, transition, tool, handoff, and ended events.
+- Recording runtime node, transition, tool, handoff, ended, and runtime-defect events, plus bounded user/assistant turns.
 - Reviewing completed traces with OpenAI.
 - Returning constrained ChangeProposal data for the frontend to review.
 
@@ -90,9 +90,9 @@ A browser test call follows this sequence:
 3. The frontend opens the Pipecat browser client.
 4. bot.py starts or joins the voice pipeline.
 5. AgentBuilder loads the session document, or the active draft, or the fallback example flow.
-6. Runtime callbacks record events against the explicit test-session ID.
+6. Runtime callbacks record events and finalized transcript turns against the explicit test-session ID.
 7. The frontend polls GET /api/test-sessions/{session_id}.
-8. End or Handoff evidence marks the call terminal and the frontend stores a local CallRecord.
+8. End or Handoff evidence marks the call terminal; the frontend waits briefly for the final assistant turn, then stores a local CallRecord.
 9. The frontend can request a post-call review.
 
 Session-scoped preview documents are supported by the session creation payload. They let a user test a proposed graph without activating it.
@@ -109,7 +109,7 @@ The local control API is intentionally small:
 | POST | /api/test-sessions | Create a normal or session-scoped test session |
 | GET | /api/test-sessions/{id} | Read session status and events |
 | POST | /api/test-sessions/{id}/complete | Reconcile a terminal or disconnected session |
-| POST | /api/copilot/review-call | Review a completed trace |
+| POST | /api/copilot/review-call | Review a completed trace and bounded transcript |
 | POST | /api/copilot/propose | Generate a constrained stable-ID proposal |
 | POST | /api/copilot/suggest-fix | Generate and validate a small post-call suggested-fix patch |
 
@@ -139,9 +139,9 @@ The frontend editor's stable IDs and layout metadata are not runtime fields. The
 
 ## Sessions and trace events
 
-control_api.py keeps active sessions in memory for the local process. Each session contains an ID, draft version, status, timestamps, optional session document, and trace events.
+control_api.py keeps active sessions in memory for the local process. Each session contains an ID, draft version, status, timestamps, an optional session document, trace events, and an optional bounded transcript. Sessions are evidence for one call only; the browser stores completed call history.
 
-Runtime events are associated with an explicit session ID whenever available. Event payloads include human-readable titles and structured transition context where the runtime can provide it. The frontend uses those fields to create readable timeline entries instead of showing raw event names.
+Runtime events and transcript turns are associated with an explicit session ID whenever available. Some browser voice transports do not expose the URL query parameter on their connection object, so the runtime resolves the newest control session at connection time. On disconnect it also recovers user and assistant messages from the final LLM context if a turn callback raced shutdown. Event payloads include human-readable titles and structured transition context where the runtime can provide it. The frontend uses those fields to create readable timeline entries instead of showing raw event names.
 
 Terminal evidence includes:
 
@@ -149,7 +149,9 @@ Terminal evidence includes:
 - Handoff/tool result where applicable.
 - An ended event or completed session state.
 
-This is trace evidence, not a transcript system. The backend must not claim that it stored a full conversation transcript.
+The transcript is a small evidence snapshot, not a transcript warehouse. It is captured from finalized Pipecat aggregator turns, capped at 120 turns and 24,000 characters, and may be absent for older calls. The backend must not claim to retain a complete production conversation history.
+
+On a tool-node entry, `AgentBuilder` records the mock result and deterministically follows the matching `success` or `failure` edge. A missing outcome edge fails the session with a `runtime_defect`; call review returns that as `report_development`, rather than asking Copilot for a misleading graph patch.
 
 ## AI review and proposals
 
@@ -159,7 +161,7 @@ Review input is constrained to:
 
 - The tested document.
 - Draft version.
-- Completed trace.
+- Completed trace and bounded transcript when available.
 - Optional issue/evidence text supplied by the frontend.
 - Compact historical improvement summaries for the same agent, when available.
 
@@ -201,6 +203,10 @@ The state directory can be changed with PROSPER_STATE_DIR. The local directory i
 Sessions are process-local for this challenge. Restarting the backend clears in-memory session status. Browser-local call records remain in the frontend's local storage.
 
 There is no backend database, multi-user storage, transcript warehouse, analytics dashboard, proposal store, or authentication layer.
+
+## Future development
+
+Multi-intent task orchestration, persistent caller state, live scheduling integrations, stronger replay suites, transcript privacy controls, shared evidence storage, human review corrections, and full-agent rebuilds are intentionally deferred. The current runtime keeps each workflow explicit in the graph.
 
 ## Changing models or ports
 

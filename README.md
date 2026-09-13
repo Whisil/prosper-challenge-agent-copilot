@@ -13,7 +13,7 @@ Pipecat's dev runner ships a **prebuilt browser client**, while the frontend wor
 
 ## Quickstart
 
-See the [frontend engineering guide](docs/frontend-architecture.md) and [backend engineering guide](docs/backend-architecture.md) for setup, architecture, configuration, and troubleshooting. Requires **Python 3.11+**, [**uv**](https://docs.astral.sh/uv/getting-started/installation/), Node.js, and pnpm.
+See the [agent and feedback flow](docs/agent-feedback-flow.md) for the product walkthrough, and the [frontend engineering guide](docs/frontend-architecture.md) and [backend engineering guide](docs/backend-architecture.md) for setup, architecture, configuration, and troubleshooting. Requires **Python 3.11+**, [**uv**](https://docs.astral.sh/uv/getting-started/installation/), Node.js, and pnpm.
 
 From the repo root, install both applications:
 
@@ -36,7 +36,7 @@ make frontend-dev
 
 Open [http://localhost:5173](http://localhost:5173) to use the agent workspace. On a fresh browser the builder starts with a complex **Prosper Flow Test Agent** showcase graph and a small **Prosper Review Example** agent linked to the sample Call history record. The showcase demonstrates conversations, tools, ordinary transitions, handoffs, terminal outcomes, warnings, and errors; the review example keeps the suggested-fix scenario easy to understand. The builder also supports template or blank-agent onboarding, browser-local multi-agent storage, four-sided connections, local draft versions, validation, and draft-aware **Test call** execution.
 
-The reliable demo path is the editable graph, Test call, Call history, and post-call AI review. The separate suggested-fix flow is documented below as post-submission progress. For the reviewer-oriented solution overview, see [`solution.md`](solution.md). `Ctrl+C` stops either process. Run `make help` to list all targets.
+The reliable demo path is the editable graph, Test call, Call history, and post-call AI review. The scheduling templates also constrain appointment selection to the options they offer, so an unlisted time such as Wednesday is blocked and recorded as a validation warning. The separate suggested-fix flow is documented below as post-submission progress. For the reviewer-oriented solution overview, see [`solution.md`](solution.md). `Ctrl+C` stops either process. Run `make help` to list all targets.
 
 Prefer raw commands? Use:
 
@@ -67,3 +67,7 @@ To run a different agent, point `AGENT_FLOW` in `bot.py` at another JSON file.
 Suggested fixes are a separate post-call workflow. From a completed call review, the user can generate a constrained patch rather than asking AI to replace the entire agent JSON. The backend receives the full document, trace, review, and exact node/edge reference indexes; it validates the typed operations and dry-runs the resulting graph. The frontend then previews the immutable draft with a clear “not applied” state.
 
 The seeded sample call has a deterministic verification fallback when the AI request is unavailable or invalid, so the flow can be demonstrated safely. Real-call failures do not change the graph. **Accept** saves one new local revision; **Deny** discards the preview. The generic guideline Copilot remains a separate editor surface.
+
+## Future development
+
+Multi-intent task orchestration, persistent caller state, live availability integrations, stronger replay suites, transcript privacy controls, shared evidence storage, human review corrections, and full-agent rebuilds are deferred. The submitted version keeps these behaviors as explicit graph routes so the editor and evidence loop stay clear.

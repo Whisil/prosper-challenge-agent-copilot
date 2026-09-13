@@ -32,7 +32,7 @@ Suggested fixes are implemented as a separate post-call flow rather than another
 Call review → Generate suggested fix → loading overlay → immutable graph preview → Accept or Deny
 ```
 
-The model receives the complete current `AgentDocument`, the completed trace and review, and exact stable node/edge reference indexes. It returns a small typed operation list. The backend rejects unknown references, duplicate IDs, terminal outgoing edges, unsupported fields, and invalid final graphs. The frontend applies those operations only to a cloned draft, preserves layout metadata, and marks the result as unapplied.
+The model receives the complete current `AgentDocument`, the completed trace and review, and exact stable node/edge reference indexes. It returns a small typed operation list. The backend rejects unknown references, duplicate IDs, terminal outgoing edges, unsupported fields, and invalid final graphs. The frontend applies those operations only to a cloned draft, preserves layout metadata, and marks the result as unapplied. Runtime defects are handled separately: mock tools follow success/failure routes deterministically, and a missing route produces a local developer report instead of an AI patch.
 
 The seeded availability-before-verification sample has a deterministic safe fallback if the model is unavailable or returns an invalid patch. Real-call failures are visible and leave the active graph unchanged. Accept persists exactly one new local revision; Deny restores the original view without changing local storage. The generic guideline Copilot remains separate.
 
@@ -62,9 +62,13 @@ The trade-off is that data is browser-local and not suitable for collaboration o
 
 ### Evidence instead of a large feedback system
 
-Call history stores traces, not a transcript warehouse. It turns runtime events into short, human-readable steps and starts AI review only after a terminal outcome. The sample call makes the evidence loop reviewable when voice services are unavailable.
+Call history stores lightweight traces and a bounded local transcript, not a transcript warehouse. It turns runtime events into short, human-readable steps and starts AI review only after a terminal outcome. The sample call makes the evidence loop reviewable when voice services are unavailable.
 
 This is intentionally narrower than a full call analytics product. It avoids pretending that lightweight traces contain information the system did not actually collect.
+
+## Future development
+
+Multi-intent task orchestration, persistent caller task state, live availability integrations, stronger replay suites, transcript privacy controls, human review corrections, shared evidence storage, and full-agent rebuild proposals are future work. The current product keeps booking and other workflows explicit in the graph so the demo stays understandable and safe.
 
 ## Architecture at a glance
 

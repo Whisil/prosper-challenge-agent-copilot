@@ -156,7 +156,7 @@ Deletion is handled in the graph hook and is shared by inspector and keyboard ac
 
 ## Persistence and migration
 
-Fresh storage is bootstrapped with two defaults: the rich Prosper Flow Test Agent showcase graph and the small Prosper Review Example graph used by the sample call-history record. Existing local collections are preserved; missing defaults are added without changing the active agent.
+Fresh storage is bootstrapped with two defaults: the rich Prosper Flow Test Agent showcase graph and the small Prosper Review Example graph used by the sample call-history record. Existing local collections are preserved; missing defaults are added without changing the active agent. Built-in agents that still contain the retired task-queue nodes are restored to their current templates; custom agents are not changed.
 
 Adding a template or blank agent appends a new StoredAgent; it does not replace the current agent. Switching agents changes activeAgentId and preserves each agent's local draft.
 
@@ -196,7 +196,9 @@ Save/activate AgentDocument
   -> POST /api/copilot/review-call
 ~~~
 
-CallHistoryWorkspace stores readable summaries of node entries, transitions, tools, handoffs, and outcomes. It stores trace evidence, not a transcript. A completed End or Handoff event is the normal review trigger. If the backend/OpenAI review is unavailable, the record shows an actionable unavailable state instead of an endless loading state.
+CallHistoryWorkspace stores readable summaries of node entries, transitions, tools, handoffs, outcomes, and a collapsed local transcript. A completed End or Handoff event is the normal review trigger; the app waits briefly for final turn data before persisting the call. A trace-only call is labelled limited evidence and cannot be shown as a successful spoken-behavior review. If the backend/OpenAI review is unavailable, the record shows the actual retryable error instead of an endless loading or no-change state.
+
+A deterministic runtime defect, such as a successful mock tool with no recorded success transition, is different from a graph improvement. Its review offers **Report technical issue**, which records a compact `DeveloperReport` only on that local call. Graph/instruction findings continue through the immutable suggested-fix preview.
 
 The sample record is linked to the small review-example agent so the review workflow can be inspected without placing a live call. The richer showcase agent remains available for builder demonstrations. Real calls remain local to the browser. A terminal call also creates one compact improvement-memory record for its agent. That record keeps the summary, issue locations, decision, draft version, and affected IDs—not the full trace or graph. Only the selected agent's recent memory is sent with later review and proposal requests.
 
@@ -249,6 +251,10 @@ Restart the backend after changing OPENAI_MODEL. The frontend never receives the
 8. Update this guide when ownership, commands, configuration, or API boundaries change.
 
 Avoid putting graph mutations in presentational components or duplicating local-storage logic.
+
+## Future development
+
+The frontend does not currently manage a cross-step task queue. If that becomes necessary, it should be introduced as a separate session feature rather than hidden inside graph editing or call history. Other deferred work includes transcript privacy controls, shared storage, stronger replay tools, and full-agent rebuild review.
 
 ## Tests and troubleshooting
 

@@ -1,12 +1,13 @@
 # Call feedback flow
 
-This product treats a completed call as evidence about the agent's graph. The evidence is intentionally small: it contains runtime steps, transitions, tool or handoff events, the tested draft version, and an AI review. It is not a transcript and it is not a permanent training dataset.
+This product treats a completed call as evidence about the agent's graph and conversation. The browser stores a small local record containing runtime steps, a bounded transcript, tool or handoff events, the tested draft version, and an AI review. It is not a transcript warehouse or a training dataset.
 
 ## The complete flow
 
 ```text
 Test call
   -> terminal graph event
+  -> wait briefly for the final turn snapshot
   -> save CallRecord locally
   -> create ImprovementRecord
   -> review the call with AI
@@ -17,7 +18,7 @@ Test call
   -> record the decision for later context
 ```
 
-The terminal event is an End or Handoff node. It is the point at which the frontend treats the call as complete, even if the runtime session status is updated a little later. The completed call is saved before the review request starts, so a failed AI request never loses the call evidence.
+The terminal event is an End or Handoff node. It is the point at which the frontend treats the call as complete, even if the runtime session status is updated a little later. The frontend waits two seconds for the final assistant turn, saves the completed call before requesting a review, and keeps the review retryable if the backend or model is unavailable.
 
 ## What is collected
 
@@ -52,24 +53,44 @@ Each call is stored in the browser as a `CallRecord` under `prosper-call-history
       "nodeId": "booking_complete",
       "payload": { "nodeTitle": "Booking Complete", "isTerminal": true }
     }
+  ],
+  "transcript": [
+    {
+      "id": "turn-1",
+      "role": "user",
+      "text": "I need to book an appointment.",
+      "timestamp": "2026-09-13T10:00:18Z"
+    },
+    {
+      "id": "turn-2",
+      "role": "assistant",
+      "text": "Here are two appointment options.",
+      "timestamp": "2026-09-13T10:00:22Z"
+    }
   ]
 }
 ```
 
 The timeline turns these technical event kinds into readable steps. For example, `book_appointment` is displayed as **Book Appointment used**, and the transition explains that the caller moved from **Caller Request** to **Share Availability**.
 
-The trace can show what the graph did, but it cannot reliably prove every sentence spoken by the caller. The system therefore avoids claiming that it has a full transcript.
+The backend captures finalized user and assistant turns from Pipecat's turn aggregators, including structured message parts returned by the runtime. If a transport does not expose the browser session ID, the runtime resolves the newest control session before recording the turn; the final LLM context is also used as a small recovery snapshot when a disconnect races the last turn event. A call is capped at 120 turns and 24,000 characters; `transcriptTruncated` makes shortened evidence visible. Older calls may have no transcript and are labelled trace-only. The trace explains what the graph executed; the transcript explains what was said.
+
+A trace-only call is limited evidence. It can show that a route ran, but it cannot prove that the caller gave valid identity information, chose an offered time, or confirmed an appointment. For that reason, the reviewer cannot return **Looks good** for a trace-only or incomplete call; it is shown as **Review unavailable** with a retryable explanation instead.
+
+## Runtime defects
+
+Mock tool completion is deterministic. On entry to a configured tool node, the runtime records the result and immediately follows its configured success or failure transition. If there is no matching outcome transition, the session fails safely and records a `runtime_defect`. This is a platform problem, not an AI graph suggestion: Call history offers **Report technical issue**, which saves a compact local developer report with the session ID, draft version, and relevant event kinds.
 
 ## AI call review
 
 After the call is saved, the frontend sends `POST /api/copilot/review-call`. The request contains:
 
 - The complete `AgentDocument` that was tested.
-- The call's complete trace and status.
+- The call's bounded trace, transcript, and status.
 - The draft version.
 - Compact historical findings for the same agent, if any.
 
-The backend builds a prompt with the current graph, its stable node and edge reference index, and the trace as untrusted evidence. The AI returns a small structured review:
+The backend builds a prompt with the current graph, its stable node and edge reference index, and the call evidence wrapped as untrusted content. The reviewer checks mixed requests, verification, offered appointment times, confirmation, tool results, handoffs, and whether the outcome matches the graph. Each issue can point to transcript turns and records observed versus expected behavior. The AI returns a small structured review:
 
 ```json
 {
@@ -81,14 +102,19 @@ The backend builds a prompt with the current graph, its stable node and edge ref
       "explanation": "The booking transition reaches Share Availability directly.",
       "severity": "high",
       "nodeId": "share_availability",
-      "edgeId": "request_to_availability"
+      "edgeId": "request_to_availability",
+      "evidenceTurnIds": ["turn-1", "turn-2"],
+      "observedBehavior": "Availability was shared before verification.",
+      "expectedBehavior": "Verify the caller before sharing appointment options."
     }
   ],
   "recommendedAction": "propose_changes"
 }
 ```
 
-The review is stored with the call. It is also copied into the compact improvement memory described below. If the backend or model is unavailable, the call is kept and the review is marked unavailable with an actionable error and retry option.
+The review is stored with the call. It is also copied into the compact improvement memory described below. If the backend or model is unavailable, the call is kept and the review is marked unavailable with an actionable error and retry option. Unavailable or still-pending records are not sent as historical findings to later Copilot requests, so they cannot be mistaken for evidence or a no-change decision.
+
+Built-in agents that still contain the retired task-queue nodes are restored to the current templates during migration. Custom agents are never rewritten by this migration.
 
 ## Cross-call improvement memory
 
@@ -121,7 +147,7 @@ Each terminal completed or failed call creates one `ImprovementRecord` in `prosp
 
 The memory is deliberately not a history of complete graphs. It does not duplicate documents, store transcripts, or create a separate workflow engine. It keeps at most 20 recent records in the browser. Records are isolated by `agentId`; a different agent's findings are not sent as context.
 
-The selected call is different: its full trace is sent because it is the evidence currently being reviewed. Earlier calls are sent only as compact summaries. The prompt labels that history as untrusted and potentially stale, while the current graph's reference index remains authoritative.
+The selected call is different: its full bounded trace and transcript are sent because it is the evidence currently being reviewed. Earlier calls are sent only as compact summaries. The prompt labels that history as untrusted and potentially stale, while the current graph's reference index remains authoritative.
 
 The AI is told to:
 
@@ -188,4 +214,4 @@ For the seeded sample availability issue, a deterministic fallback can create th
 
 ## Future improvements
 
-Transcript capture with privacy controls, human correction of inaccurate reviews, shared evidence storage, larger deterministic replay suites, and full-agent rebuild proposals are intentionally deferred. The current memory layer is context for review; it is not model training or automatic learning.
+Multi-intent task orchestration within one call, persistent caller task state, live scheduling and availability integrations, stronger deterministic replay suites, transcript privacy controls, human correction of inaccurate reviews, shared evidence storage, and full-agent rebuild proposals are intentionally deferred. The current memory layer is context for review; it is not model training or automatic learning.
