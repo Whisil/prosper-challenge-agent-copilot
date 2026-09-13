@@ -100,6 +100,7 @@ Browser-local storage keys are intentionally small and explicit:
 | --- | --- | --- |
 | prosper-agent-collection-v1 | agentCollection.ts | Local agents and each agent's current draft |
 | prosper-call-history-v1 | callHistoryStorage.ts | Completed test-call records and reviews |
+| prosper-improvement-memory-v1 | improvementMemory.ts | Up to 20 compact per-agent findings and proposal decisions |
 
 The backend does not own this browser collection. That keeps editing responsive and makes the challenge demo self-contained.
 
@@ -197,7 +198,7 @@ Save/activate AgentDocument
 
 CallHistoryWorkspace stores readable summaries of node entries, transitions, tools, handoffs, and outcomes. It stores trace evidence, not a transcript. A completed End or Handoff event is the normal review trigger. If the backend/OpenAI review is unavailable, the record shows an actionable unavailable state instead of an endless loading state.
 
-The sample record is linked to the showcase agent so the review workflow can be inspected without placing a live call. Real calls remain local to the browser.
+The sample record is linked to the small review-example agent so the review workflow can be inspected without placing a live call. The richer showcase agent remains available for builder demonstrations. Real calls remain local to the browser. A terminal call also creates one compact improvement-memory record for its agent. That record keeps the summary, issue locations, decision, draft version, and affected IDs—not the full trace or graph. Only the selected agent's recent memory is sent with later review and proposal requests.
 
 ## AI boundaries
 

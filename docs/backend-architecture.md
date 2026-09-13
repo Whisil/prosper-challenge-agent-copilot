@@ -95,7 +95,7 @@ A browser test call follows this sequence:
 8. End or Handoff evidence marks the call terminal and the frontend stores a local CallRecord.
 9. The frontend can request a post-call review.
 
-Session-scoped preview documents are supported by the session creation payload, but the final challenge demo does not present the graph-fix preview as a finished workflow.
+Session-scoped preview documents are supported by the session creation payload. They let a user test a proposed graph without activating it.
 
 ## Control API
 
@@ -161,6 +161,7 @@ Review input is constrained to:
 - Draft version.
 - Completed trace.
 - Optional issue/evidence text supplied by the frontend.
+- Compact historical improvement summaries for the same agent, when available.
 
 Proposal input adds:
 
@@ -174,6 +175,8 @@ Proposal input adds:
 Proposal output is not a replacement document. It is a ChangeProposal containing diagnosis, assumptions, questions, risks, tests, and stable-ID GraphOperation values. The backend rejects unknown operations, null or unknown references, title/function substitutions, protected entry-node deletion, terminal outgoing edges, invalid properties, and invalid resulting graphs.
 
 Structured outputs are requested with JSON Schema and no temperature parameter. A proposal with zero operations is valid when the evidence does not justify a change. The frontend must still require human approval before any local mutation.
+
+Historical context is request-scoped and never persisted by the backend. The backend treats it as untrusted, limits it to 20 records, and uses the current document's reference index as authoritative. It blocks only obvious reversals of accepted changes; it does not treat a previous rejection as a permanent rule.
 
 ## Post-submission progress
 
