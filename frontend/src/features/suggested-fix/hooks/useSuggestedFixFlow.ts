@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { AgentDraft, AgentValidationError, CallRecord, CallReview } from "@/features/agent-graph/model/type"
+import type { HistoricalImprovementContext } from "@/features/agent-copilot/model/type"
 import { applyGraphOperations } from "@/features/agent-graph/lib/graphPatch"
 import { validateAgentConfig } from "@/features/agent-graph/lib/validateAgent"
 import { requestSuggestedFix } from "../lib/suggestedFixApi"
@@ -13,11 +14,13 @@ interface UseSuggestedFixFlowOptions {
   activeAgentId: string
   draft: AgentDraft
   draftVersion: string
+  history: HistoricalImprovementContext
   commitSuggestedFix: (preview: AgentDraft, expectedAgentId: string, expectedVersion: string) => AgentValidationError[]
-  onAccepted?: (callId: string) => void
+  onAccepted?: (details: { call: CallRecord; response: NonNullable<SuggestedFixState["response"]>; originalDraft: AgentDraft; previewDraft: AgentDraft }) => void
+  onDenied?: (details: { call: CallRecord; response: NonNullable<SuggestedFixState["response"]> }) => void
 }
 
-export function useSuggestedFixFlow({ activeAgentId, draft, draftVersion, commitSuggestedFix, onAccepted }: UseSuggestedFixFlowOptions) {
+export function useSuggestedFixFlow({ activeAgentId, draft, draftVersion, history, commitSuggestedFix, onAccepted, onDenied }: UseSuggestedFixFlowOptions) {
   const [state, setState] = useState<SuggestedFixState>({ status: "idle" })
   const requestKey = useRef<string | undefined>(undefined)
   const requestNumber = useRef(0)
@@ -42,7 +45,7 @@ export function useSuggestedFixFlow({ activeAgentId, draft, draftVersion, commit
     requestKey.current = key
     const requestId = ++requestNumber.current
     const originalDraft = clone(draft)
-    const request: SuggestedFixRequest = { document: clone(draft.config), baseVersion: draftVersion, call: record, review }
+    const request: SuggestedFixRequest = { document: clone(draft.config), baseVersion: draftVersion, call: record, review, history: { ...history, records: history.records.filter((item) => item.callId !== record.id) } }
     setState({ status: "loading", source: request, originalDraft })
     try {
       const response = await requestSuggestedFix(request)
@@ -64,27 +67,29 @@ export function useSuggestedFixFlow({ activeAgentId, draft, draftVersion, commit
       if (requestId !== requestNumber.current) return
       setState({ status: "error", source: request, originalDraft, error: error instanceof Error ? error.message : "The suggested fix could not be prepared." })
     }
-  }, [activeAgentId, draft, draftVersion, state.status])
+  }, [activeAgentId, draft, draftVersion, history, state.status])
 
   const accept = useCallback(() => {
-    if (state.status !== "ready" || !state.previewDraft || !state.source) return { ok: false, error: "No suggested fix is ready." }
+    if (state.status !== "ready" || !state.previewDraft || !state.source || !state.response || !state.originalDraft) return { ok: false, error: "No suggested fix is ready." }
+    const { source, response, originalDraft, previewDraft } = state
     if (state.source.baseVersion !== draftVersion || (state.originalDraft && JSON.stringify(state.originalDraft) !== JSON.stringify(draft))) {
       setState((current) => ({ ...current, status: "stale", error: "The graph changed while this suggestion was being reviewed. Generate a new suggestion." }))
       return { ok: false, error: "The suggestion is stale." }
     }
-    const errors = commitSuggestedFix(state.previewDraft, activeAgentId, state.source.baseVersion)
+    const errors = commitSuggestedFix(previewDraft, activeAgentId, source.baseVersion)
     if (errors.some((error) => error.severity === "error")) {
       setState((current) => ({ ...current, status: "stale", error: errors.map((error) => error.message).join(" ") }))
       return { ok: false, error: errors.map((error) => error.message).join(" ") }
     }
-    onAccepted(state.source.call.id)
+    onAccepted?.({ call: source.call, response, originalDraft, previewDraft })
     clear()
     return { ok: true }
   }, [activeAgentId, clear, commitSuggestedFix, draft, draftVersion, onAccepted, state])
 
   const deny = useCallback(() => {
+    if (state.status === "ready" && state.source && state.response) onDenied?.({ call: state.source.call, response: state.response })
     clear()
-  }, [clear])
+  }, [clear, onDenied, state])
 
   const movePreviewNode = useCallback((nodeName: string, position: { x: number; y: number }) => {
     setState((current) => current.status === "ready" && current.previewDraft

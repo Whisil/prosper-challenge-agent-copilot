@@ -1,4 +1,4 @@
-import type { AgentDocument, CallRecord } from "@/features/agent-graph/model/type"
+import type { AgentDocument, CallRecord, ImprovementRecord } from "@/features/agent-graph/model/type"
 import type { GraphOperation } from "@/features/agent-graph/model/patch"
 export type { GraphOperation, OperationPreview, OperationResult } from "@/features/agent-graph/model/patch"
 
@@ -36,12 +36,19 @@ export interface CopilotProposalRequest {
     text: string
     call?: CallRecord
   }
+  history?: HistoricalImprovementContext
+}
+
+export interface HistoricalImprovementContext {
+  agentId: string
+  records: ImprovementRecord[]
 }
 
 export interface ReviewCallRequest {
   document: AgentDocument
   baseVersion: string
   call: CallRecord
+  history?: HistoricalImprovementContext
 }
 
 export interface ChangeProposal {

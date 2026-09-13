@@ -1,5 +1,6 @@
 import type { XYPosition } from "@xyflow/react"
 import type { AgentDocument, AgentDraft, AgentEdge, AgentNode, AgentProperty, AgentTaskMessage, AgentToolConfig, AgentTransferConfig, AgentValidationError, CallRecord, CallReview, AgentEdgeKind } from "@/features/agent-graph/model/type"
+import type { HistoricalImprovementContext } from "@/features/agent-copilot/model/type"
 
 export type SuggestedFixOperation =
   | { op: "add_node"; node: AgentNode; position?: XYPosition }
@@ -12,6 +13,7 @@ export interface SuggestedFixRequest {
   baseVersion: string
   call: CallRecord
   review: CallReview
+  history?: HistoricalImprovementContext
 }
 
 export interface SuggestedFixResponse {
