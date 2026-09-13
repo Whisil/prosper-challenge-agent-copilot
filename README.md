@@ -13,7 +13,7 @@ Pipecat's dev runner ships a **prebuilt browser client**, while the frontend wor
 
 ## Quickstart
 
-See the [agent and feedback flow](docs/agent-feedback-flow.md) for the product walkthrough, and the [frontend engineering guide](docs/frontend-architecture.md) and [backend engineering guide](docs/backend-architecture.md) for setup, architecture, configuration, and troubleshooting. Requires **Python 3.11+**, [**uv**](https://docs.astral.sh/uv/getting-started/installation/), Node.js, and pnpm.
+Start with the [project crash course](docs/project-crash-course.md) for the product and technical walkthrough. The [technical presentation guide](docs/technical-presentation-guide.md) is the interviewer-facing architecture and decision brief. The detailed [call feedback flow](docs/call-feedback-flow.md) explains evidence, reviews, historical memory, and suggested fixes; the [frontend engineering guide](docs/frontend-architecture.md) and [backend engineering guide](docs/backend-architecture.md) cover setup, architecture, configuration, and troubleshooting. Requires **Python 3.11+**, [**uv**](https://docs.astral.sh/uv/getting-started/installation/), Node.js, and pnpm.
 
 From the repo root, install both applications:
 
